@@ -63,9 +63,10 @@ func main() {
 		if err := renderer.Resize(uint32(w), uint32(h)); err != nil {
 			log.Printf("resize error: %v", err)
 		}
-		ecs.Resource[window.Window](worlds.Engine).Viewport = window.ViewportSize{
-			Width:  uint32(w),
-			Height: uint32(h),
+		viewport := window.ViewportSize{Width: uint32(w), Height: uint32(h)}
+		ecs.Resource[window.Window](worlds.Engine).Viewport = viewport
+		if worlds.UI != nil {
+			ecs.Resource[window.Window](worlds.UI).Viewport = viewport
 		}
 	})
 
@@ -77,7 +78,10 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		syncUiPointer(worlds)
+
 		app.TickFrame(worlds, demo, delta)
+		handleUiClicks(worlds)
 
 		switch err := render.RenderFrame(renderer, worlds.Engine); {
 		case err == nil:
@@ -94,6 +98,7 @@ func main() {
 			(*picking).Result = nil
 			applySelection(worlds.Engine, result.EntityID)
 			glfwWindow.SetTitle(pickTitle(result))
+			refreshHudLabel(worlds, result.EntityID)
 		}
 
 		app.PostFrame(worlds)

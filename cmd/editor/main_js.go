@@ -66,9 +66,10 @@ func main() {
 		if err := renderer.Resize(w, h); err != nil {
 			js.Global().Get("console").Call("error", "resize failed: "+err.Error())
 		}
-		ecs.Resource[window.Window](worlds.Engine).Viewport = window.ViewportSize{
-			Width:  w,
-			Height: h,
+		viewport := window.ViewportSize{Width: w, Height: h}
+		ecs.Resource[window.Window](worlds.Engine).Viewport = viewport
+		if worlds.UI != nil {
+			ecs.Resource[window.Window](worlds.UI).Viewport = viewport
 		}
 		return nil
 	})
@@ -82,7 +83,10 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		syncUiPointer(worlds)
+
 		app.TickFrame(worlds, demo, delta)
+		handleUiClicks(worlds)
 
 		if err := render.RenderFrame(renderer, worlds.Engine); err != nil {
 			js.Global().Get("console").Call("error", "render error: "+err.Error())
@@ -95,6 +99,7 @@ func main() {
 			(*picking).Result = nil
 			applySelection(worlds.Engine, result.EntityID)
 			doc.Set("title", pickTitle(result))
+			refreshHudLabel(worlds, result.EntityID)
 		}
 
 		app.PostFrame(worlds)

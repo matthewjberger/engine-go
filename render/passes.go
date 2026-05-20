@@ -96,6 +96,39 @@ func AddPickingPass(renderer *Renderer) (*Pass, error) {
 	return pass, nil
 }
 
+// AddUiQuadPass builds the UI colored-rectangle pass and binds it
+// to write into colorID (typically fxaa_output so the UI lands on
+// top of the antialiased scene before present).
+func AddUiQuadPass(renderer *Renderer, colorID ResourceID) (*Pass, error) {
+	pass, err := NewUiQuadPass(renderer.Device, renderer.SurfaceFormat)
+	if err != nil {
+		return nil, err
+	}
+	if err := renderer.Graph.AddPass(pass, []SlotBinding{
+		{Slot: "color", ResourceID: colorID},
+	}); err != nil {
+		return nil, err
+	}
+	return pass, nil
+}
+
+// AddUiTextPass builds the UI text pass and binds it to write into
+// colorID (typically the same buffer the UI quad pass writes to,
+// inserted after it in the graph so glyphs draw on top of any
+// background panels).
+func AddUiTextPass(renderer *Renderer, colorID ResourceID) (*Pass, error) {
+	pass, err := NewUiTextPass(renderer.Device, renderer.Queue, renderer.SurfaceFormat)
+	if err != nil {
+		return nil, err
+	}
+	if err := renderer.Graph.AddPass(pass, []SlotBinding{
+		{Slot: "color", ResourceID: colorID},
+	}); err != nil {
+		return nil, err
+	}
+	return pass, nil
+}
+
 // AddSelectionMaskPass builds the selection-mask pass. Reads the
 // entity_id texture, writes the selection_mask transient.
 func AddSelectionMaskPass(renderer *Renderer) (*Pass, error) {

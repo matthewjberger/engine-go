@@ -6,7 +6,13 @@ dual-world simulation and renderer separation, free-function systems
 wired through a named schedule. Runs natively (GLFW) and on the web
 (WebAssembly + canvas).
 
-![indigo editor](docs/editor.png)
+[![indigo editor](docs/editor.png)](https://matthewberger.dev/indigo/editor/)
+
+[Play the editor in your browser](https://matthewberger.dev/indigo/editor/) (requires a WebGPU-capable browser).
+
+[![breakout](docs/breakout.png)](https://matthewberger.dev/indigo/breakout/)
+
+[Play breakout in your browser](https://matthewberger.dev/indigo/breakout/).
 
 Architecture notes live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 

@@ -8,3 +8,9 @@ import "unsafe"
 func bytesOf[T any](v *T) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
 }
+
+// bytesOfN returns size bytes starting at v. Used when uploading a
+// prefix of a Go slice's backing array without copying.
+func bytesOfN[T any](v *T, size uint64) []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(v)), size)
+}

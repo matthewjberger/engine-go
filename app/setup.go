@@ -56,21 +56,24 @@ func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	return engine, nil
 }
 
-// Worlds bundles an engine world, a game world, and their schedules.
-// [TickFrame] and [PostFrame] walk both worlds in the order the engine
-// expects.
+// Worlds bundles the engine + game + UI worlds and their schedules.
+// UI is opt-in: apps that don't use retained UI leave the UI fields
+// nil and [TickFrame] / [PostFrame] skip them. Mirrors nightshade's
+// world.core / world.ui split.
 type Worlds struct {
-	Engine         *ecs.World
-	Game           *ecs.World
+	Engine *ecs.World
+	Game   *ecs.World
+	UI     *ecs.World
+
 	EngineSchedule *ecs.Schedule
 	GameSchedule   *ecs.Schedule
+	UISchedule     *ecs.Schedule
 }
 
 // TickFrame runs the per-frame pre-render work: advance the window
-// timing on both worlds, run the game schedule (game systems write
-// back to the engine through the sync helpers), run the engine
-// schedule, run the app's optional [App] lifecycle hooks, then apply
-// any deferred ECS commands.
+// timing on every present world, run game then engine then ui
+// schedules, run the app's optional [App] lifecycle hooks, apply any
+// deferred ECS commands.
 //
 // World.Step is intentionally deferred to [PostFrame] so the renderer
 // (which runs after this returns) can still see the current frame's
@@ -78,9 +81,15 @@ type Worlds struct {
 func TickFrame(worlds Worlds, hooks *App, delta float32) {
 	window.Advance(&ecs.Resource[window.Window](worlds.Engine).Timing, delta)
 	window.Advance(&ecs.Resource[window.Window](worlds.Game).Timing, delta)
+	if worlds.UI != nil {
+		window.Advance(&ecs.Resource[window.Window](worlds.UI).Timing, delta)
+	}
 
 	worlds.GameSchedule.Run(worlds.Game)
 	worlds.EngineSchedule.Run(worlds.Engine)
+	if worlds.UI != nil && worlds.UISchedule != nil {
+		worlds.UISchedule.Run(worlds.UI)
+	}
 
 	if hooks != nil {
 		if hooks.RunSystems != nil {
@@ -93,6 +102,9 @@ func TickFrame(worlds Worlds, hooks *App, delta float32) {
 
 	worlds.Engine.ApplyCommands()
 	worlds.Game.ApplyCommands()
+	if worlds.UI != nil {
+		worlds.UI.ApplyCommands()
+	}
 }
 
 // PostFrame finalizes the frame after the renderer has run: advance
@@ -101,5 +113,8 @@ func TickFrame(worlds Worlds, hooks *App, delta float32) {
 func PostFrame(worlds Worlds) {
 	worlds.Engine.Step()
 	worlds.Game.Step()
+	if worlds.UI != nil {
+		worlds.UI.Step()
+	}
 	render.InputBeginFrame(ecs.Resource[render.Input](worlds.Engine))
 }

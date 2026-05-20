@@ -15,8 +15,18 @@ import (
 	"indigo/ecs"
 	"indigo/render"
 	"indigo/transform"
+	"indigo/ui"
 	"indigo/window"
 )
+
+// HudHandles holds the UI entities the editor wants to mutate every
+// frame (status label + clear button). Stored as a resource on the
+// engine world so per-frame systems can find them without hand-
+// rolling lookups.
+type HudHandles struct {
+	StatusLabel ecs.Entity
+	ClearButton ecs.Entity
+}
 
 func setupLogging() {
 	switch os.Getenv("WGPU_LOG_LEVEL") {
@@ -55,6 +65,11 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	ecs.SetResource(game, window.Window{})
 	ecs.SetResource(game, app.EngineRef{World: engine})
 
+	uiWorld := ui.NewWorld(renderer.Config.Width, renderer.Config.Height)
+	ecs.SetResource(engine, ui.WorldRef{World: uiWorld})
+	hud := buildHud(uiWorld)
+	ecs.SetResource(engine, hud)
+
 	engineSchedule := ecs.NewSchedule()
 	engineSchedule.Push("graphics_toggles", render.UpdateGraphicsToggles)
 	engineSchedule.Push("pan_orbit_camera", render.UpdatePanOrbitCamera)
@@ -66,8 +81,10 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	worlds := app.Worlds{
 		Engine:         engine,
 		Game:           game,
+		UI:             uiWorld,
 		EngineSchedule: engineSchedule,
 		GameSchedule:   gameSchedule,
+		UISchedule:     ui.NewSchedule(),
 	}
 
 	demo := editorApp()
@@ -117,11 +134,56 @@ func editorApp() *app.App {
 			if err != nil {
 				log.Fatal(err)
 			}
+			if _, err := render.AddUiQuadPass(renderer, fxaaOutputID); err != nil {
+				log.Fatal(err)
+			}
+			if _, err := render.AddUiTextPass(renderer, fxaaOutputID); err != nil {
+				log.Fatal(err)
+			}
 			if _, err := render.AddPresentPass(renderer, fxaaOutputID); err != nil {
 				log.Fatal(err)
 			}
 		},
 	}
+}
+
+// buildHud constructs the editor's heads-up display tree on the UI
+// world: a translucent panel anchored to the bottom-left holding a
+// status label and a Clear button. Returns the entity handles so
+// per-frame systems can update the label text and react to button
+// clicks.
+func buildHud(world *ecs.World) HudHandles {
+	b := ui.NewBuilder(world)
+
+	panel := b.Node(ui.Node{
+		X:       16,
+		Y:       16,
+		Width:   220,
+		Height:  76,
+		Anchor:  ui.AnchorBottomLeft,
+		Layout:  ui.LayoutColumn,
+		Padding: 8,
+		Spacing: 6,
+	}).Color(ui.Color{RGBA: [4]float32{0.08, 0.09, 0.12, 0.85}}).Entity()
+
+	b.Push(panel)
+	label := b.Node(ui.Node{Width: 200, Height: 16}).Text(ui.Text{
+		Content: "Pick a cube",
+		Color:   [4]float32{0.95, 0.96, 0.98, 1},
+		Scale:   1.6,
+	}).Entity()
+
+	clear := b.Node(ui.Node{Width: 96, Height: 24}).
+		Color(ui.Color{RGBA: [4]float32{0.18, 0.32, 0.55, 1}}).
+		Interactive().
+		Text(ui.Text{
+			Content: "Clear",
+			Color:   [4]float32{0.98, 0.98, 1, 1},
+			Scale:   1.4,
+		}).Entity()
+	b.Pop()
+
+	return HudHandles{StatusLabel: label, ClearButton: clear}
 }
 
 // initializeWorldEntities spawns a 5x5 grid of engine entities
