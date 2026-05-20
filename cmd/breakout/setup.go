@@ -13,6 +13,7 @@ import (
 	"indigo/ecs"
 	"indigo/render"
 	"indigo/transform"
+	"indigo/ui"
 	"indigo/window"
 )
 
@@ -71,11 +72,18 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	gameSchedule.Push("reset", breakoutResetSystem)
 	gameSchedule.Push("sync", breakoutSyncSystem)
 
+	uiWorld := ui.NewWorld(renderer.Config.Width, renderer.Config.Height)
+	ecs.SetResource(engine, ui.WorldRef{World: uiWorld})
+	hud := buildBreakoutHud(uiWorld)
+	ecs.SetResource(engine, hud)
+
 	worlds := app.Worlds{
 		Engine:         engine,
 		Game:           game,
+		UI:             uiWorld,
 		EngineSchedule: engineSchedule,
 		GameSchedule:   gameSchedule,
+		UISchedule:     ui.NewSchedule(),
 	}
 
 	demo := breakoutApp()
@@ -130,9 +138,11 @@ func spawnBreakoutSun(engine *ecs.World) {
 	})
 }
 
-// breakoutApp wires the render pipeline: mesh -> fxaa -> present.
-// No sky or grid; mesh is the first writer of scene_color and its
-// clear-on-load supplies the dark background.
+// breakoutApp wires the render pipeline: mesh -> fxaa -> ui_quad ->
+// ui_text -> present. Mesh is the first writer of scene_color and
+// its clear-on-load supplies the dark background; UI lands on top
+// of the antialiased scene before present so the bitmap font stays
+// crisp.
 func breakoutApp() *app.App {
 	return &app.App{
 		ConfigureRenderGraph: func(world *ecs.World, renderer *render.Renderer) {
@@ -141,6 +151,12 @@ func breakoutApp() *app.App {
 			}
 			_, fxaaOutputID, err := render.AddFxaaPass(renderer)
 			if err != nil {
+				log.Fatal(err)
+			}
+			if _, err := render.AddUiQuadPass(renderer, fxaaOutputID); err != nil {
+				log.Fatal(err)
+			}
+			if _, err := render.AddUiTextPass(renderer, fxaaOutputID); err != nil {
 				log.Fatal(err)
 			}
 			if _, err := render.AddPresentPass(renderer, fxaaOutputID); err != nil {

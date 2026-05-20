@@ -65,9 +65,10 @@ func main() {
 		if err := renderer.Resize(w, h); err != nil {
 			js.Global().Get("console").Call("error", "resize failed: "+err.Error())
 		}
-		ecs.Resource[window.Window](worlds.Engine).Viewport = window.ViewportSize{
-			Width:  w,
-			Height: h,
+		viewport := window.ViewportSize{Width: w, Height: h}
+		ecs.Resource[window.Window](worlds.Engine).Viewport = viewport
+		if worlds.UI != nil {
+			ecs.Resource[window.Window](worlds.UI).Viewport = viewport
 		}
 		return nil
 	})
@@ -83,7 +84,12 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		syncBreakoutUiPointer(worlds)
+
 		app.TickFrame(worlds, demo, delta)
+		handleBreakoutUiClicks(worlds)
+		updateBreakoutHud(worlds, delta)
+
 		title := titleForState(ecs.Resource[GameState](worlds.Game))
 		if titleEl.Truthy() {
 			titleEl.Set("textContent", title)

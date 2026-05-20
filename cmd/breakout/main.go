@@ -62,9 +62,10 @@ func main() {
 		if err := renderer.Resize(uint32(w), uint32(h)); err != nil {
 			log.Printf("resize error: %v", err)
 		}
-		ecs.Resource[window.Window](worlds.Engine).Viewport = window.ViewportSize{
-			Width:  uint32(w),
-			Height: uint32(h),
+		viewport := window.ViewportSize{Width: uint32(w), Height: uint32(h)}
+		ecs.Resource[window.Window](worlds.Engine).Viewport = viewport
+		if worlds.UI != nil {
+			ecs.Resource[window.Window](worlds.UI).Viewport = viewport
 		}
 	})
 
@@ -76,7 +77,12 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		syncBreakoutUiPointer(worlds)
+
 		app.TickFrame(worlds, demo, delta)
+		handleBreakoutUiClicks(worlds)
+		updateBreakoutHud(worlds, delta)
+
 		glfwWindow.SetTitle(titleForState(ecs.Resource[GameState](worlds.Game)))
 
 		switch err := render.RenderFrame(renderer, worlds.Engine); {
