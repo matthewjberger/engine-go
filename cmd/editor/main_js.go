@@ -88,6 +88,15 @@ func main() {
 			js.Global().Get("console").Call("error", "render error: "+err.Error())
 		}
 
+		render.ProcessPickingReadback(renderer, worlds.Engine)
+
+		if picking := ecs.Resource[*render.Picking](worlds.Engine); (*picking).Result != nil {
+			result := (*picking).Result
+			(*picking).Result = nil
+			applySelection(worlds.Engine, result.EntityID)
+			doc.Set("title", pickTitle(result))
+		}
+
 		app.PostFrame(worlds)
 
 		js.Global().Call("requestAnimationFrame", frame)
@@ -124,7 +133,15 @@ func installCanvasInputListeners(canvas js.Value, engine *ecs.World) {
 			return nil
 		}
 		event := args[0]
-		setMouseButton(engine, event.Get("button").Int(), true)
+		button := event.Get("button").Int()
+		setMouseButton(engine, button, true)
+		if button == 0 {
+			picking := *ecs.Resource[*render.Picking](engine)
+			if picking != nil {
+				input := ecs.Resource[render.Input](engine)
+				render.QueuePick(picking, uint32(input.MousePosition[0]), uint32(input.MousePosition[1]))
+			}
+		}
 		return nil
 	}))
 

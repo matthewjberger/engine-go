@@ -32,9 +32,16 @@ type PickResult struct {
 
 // Picking is the engine-side state shared between the picking pass
 // and the readback system. Apps install it as a resource on the
-// engine world, set Pending to enqueue a pick, and read Result the
-// next frame (or two; pinned reads block on device.Poll, which makes
-// the result available within one frame).
+// engine world, set Pending to enqueue a pick, and read Result on a
+// later frame.
+//
+// The readback is async: on the frame a pick is queued, the picking
+// pass records a 1-pixel CopyTextureToBuffer; once the encoder is
+// submitted, [ProcessPickingReadback] issues a single MapAsync; the
+// result becomes available the moment the GPU finishes the work.
+// On native that's typically the same frame (device.Poll drives the
+// callback). On wasm the browser's event loop processes the promise
+// when it can, so the result usually arrives one frame later.
 type Picking struct {
 	Pending *PickRequest
 	Result  *PickResult
@@ -44,6 +51,7 @@ type Picking struct {
 	staging     *wgpu.Buffer
 	requested   PickRequest
 	hasInFlight bool
+	mapping     bool
 	mu          sync.Mutex
 	mapped      bool
 	mapErr      error
@@ -173,11 +181,13 @@ func pickingRelease(s any) {
 	}
 }
 
-// ProcessPickingReadback resolves any in-flight pick request. Call
-// after [RenderFrame] each frame from the main loop. Maps the
-// staging buffer, polls the device until the mapping completes,
-// reads out the u32 entity ID, and publishes a [PickResult] onto
-// [Picking.Result]. Safe to call when no pick is in flight.
+// ProcessPickingReadback advances any in-flight pick request by one
+// step. Call after [RenderFrame] each frame from the main loop.
+// Non-blocking: it issues a MapAsync once and then on subsequent
+// frames just checks whether the GPU has flushed the result. On
+// native, [Device.Poll] is invoked with wait=false so the binding's
+// internal queue gets a chance to fire the callback; on wasm the
+// browser's promise machinery does the same work.
 func ProcessPickingReadback(renderer *Renderer, world *ecs.World) {
 	if !ecs.HasResource[*Picking](world) {
 		return
@@ -187,33 +197,34 @@ func ProcessPickingReadback(renderer *Renderer, world *ecs.World) {
 		return
 	}
 
-	picking.mu.Lock()
-	picking.mapped = false
-	picking.mapErr = nil
-	picking.mu.Unlock()
-
-	err := picking.staging.MapAsync(wgpu.MapModeRead, 0, stagingRowStride, func(status wgpu.BufferMapAsyncStatus) {
-		picking.mu.Lock()
-		defer picking.mu.Unlock()
-		picking.mapped = true
-		if status != wgpu.BufferMapAsyncStatusSuccess {
-			picking.mapErr = fmt.Errorf("picking readback: map status %d", status)
+	if !picking.mapping {
+		err := picking.staging.MapAsync(wgpu.MapModeRead, 0, stagingRowStride, func(status wgpu.BufferMapAsyncStatus) {
+			picking.mu.Lock()
+			defer picking.mu.Unlock()
+			picking.mapped = true
+			if status != wgpu.BufferMapAsyncStatusSuccess {
+				picking.mapErr = fmt.Errorf("picking readback: map status %d", status)
+			}
+		})
+		if err != nil {
+			resetPicking(picking)
+			return
 		}
-	})
-	if err != nil {
-		picking.hasInFlight = false
-		return
+		picking.mapping = true
 	}
 
-	renderer.Device.Poll(true, nil)
+	renderer.Device.Poll(false, nil)
 
 	picking.mu.Lock()
 	mapped := picking.mapped
 	mapErr := picking.mapErr
 	picking.mu.Unlock()
 
-	if !mapped || mapErr != nil {
-		picking.hasInFlight = false
+	if !mapped {
+		return
+	}
+	if mapErr != nil {
+		resetPicking(picking)
 		return
 	}
 
@@ -225,6 +236,15 @@ func ProcessPickingReadback(renderer *Renderer, world *ecs.World) {
 	picking.staging.Unmap()
 
 	picking.Result = &PickResult{EntityID: entityID, Request: picking.requested}
-	picking.hasInFlight = false
-	picking.staging = nil
+	resetPicking(picking)
+}
+
+func resetPicking(p *Picking) {
+	p.hasInFlight = false
+	p.mapping = false
+	p.staging = nil
+	p.mu.Lock()
+	p.mapped = false
+	p.mapErr = nil
+	p.mu.Unlock()
 }
