@@ -26,8 +26,13 @@ struct Lights {
     data: array<LightData, 8>,
 };
 
+struct MaterialData {
+    base_color: vec4<f32>,
+};
+
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
 @group(1) @binding(0) var<storage, read> models: array<mat4x4<f32>>;
+@group(1) @binding(1) var<storage, read> materials: array<MaterialData>;
 @group(2) @binding(0) var<uniform> lights: Lights;
 
 @vertex
@@ -35,7 +40,7 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
     var out: VertexOutput;
     let world = models[instance_index] * input.position;
     out.position = view_proj * world;
-    out.color = input.color;
+    out.color = input.color * materials[instance_index].base_color;
     out.world_pos = world.xyz;
     return out;
 }

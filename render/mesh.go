@@ -25,24 +25,29 @@ var meshShader string
 // at the same slot for its whole lifetime in this handle, so the
 // mesh pass can sparse-update the GPU buffer at known offsets.
 type handleInstances struct {
-	buffer    *wgpu.Buffer
-	bindGroup *wgpu.BindGroup
-	capacity  uint32
+	modelBuffer    *wgpu.Buffer
+	materialBuffer *wgpu.Buffer
+	bindGroup      *wgpu.BindGroup
+	capacity       uint32
 
 	entityToSlot map[ecs.Entity]uint32
 	slotEntity   []ecs.Entity
 }
 
-// releaseHandleInstances drops the bucket's GPU buffer and bind
+// releaseHandleInstances drops the bucket's GPU buffers and bind
 // group. Companion to [ensureHandleCapacity], free-function style.
 func releaseHandleInstances(h *handleInstances) {
 	if h.bindGroup != nil {
 		h.bindGroup.Release()
 		h.bindGroup = nil
 	}
-	if h.buffer != nil {
-		h.buffer.Release()
-		h.buffer = nil
+	if h.modelBuffer != nil {
+		h.modelBuffer.Release()
+		h.modelBuffer = nil
+	}
+	if h.materialBuffer != nil {
+		h.materialBuffer.Release()
+		h.materialBuffer = nil
 	}
 }
 
@@ -123,15 +128,22 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 	state.viewProjLayout = viewProjLayout
 
 	modelBgLayout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
-		Label: "mesh model bind group layout",
-		Entries: []wgpu.BindGroupLayoutEntry{{
-			Binding:    0,
-			Visibility: wgpu.ShaderStageVertex,
-			Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
-		}},
+		Label: "mesh per-handle bind group layout",
+		Entries: []wgpu.BindGroupLayoutEntry{
+			{
+				Binding:    0,
+				Visibility: wgpu.ShaderStageVertex,
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
+			},
+			{
+				Binding:    1,
+				Visibility: wgpu.ShaderStageVertex,
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
+			},
+		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("mesh pass: model bind group layout: %w", err)
+		return nil, fmt.Errorf("mesh pass: per-handle bind group layout: %w", err)
 	}
 	state.modelBgLayout = modelBgLayout
 
@@ -339,7 +351,13 @@ func meshPrepare(s any, context *PassContext) error {
 			if err := ensureHandleCapacity(bucket, context.Device, state.modelBgLayout); err != nil {
 				return
 			}
-			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.buffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
+			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.modelBuffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
+
+			material := materialDataUniform{BaseColor: [4]float32{1, 1, 1, 1}}
+			if mat, ok := ecs.Get[Material](context.World, entity); ok {
+				material.BaseColor = mat.BaseColor
+			}
+			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.materialBuffer, uint64(slot)*materialDataSize, bytesOf(&material))
 		},
 	)
 
@@ -360,7 +378,29 @@ func meshPrepare(s any, context *PassContext) error {
 			if !ok {
 				return
 			}
-			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.buffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
+			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.modelBuffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
+		},
+	)
+
+	ecs.IterChanged1[Material](
+		context.World,
+		renderMeshMask,
+		0,
+		func(entity ecs.Entity, material *Material) {
+			mesh, ok := ecs.Get[RenderMesh](context.World, entity)
+			if !ok {
+				return
+			}
+			bucket, ok := state.perHandle[mesh.Mesh]
+			if !ok {
+				return
+			}
+			slot, ok := bucket.entityToSlot[entity]
+			if !ok {
+				return
+			}
+			data := materialDataUniform{BaseColor: material.BaseColor}
+			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.materialBuffer, uint64(slot)*materialDataSize, bytesOf(&data))
 		},
 	)
 
@@ -507,8 +547,13 @@ func releaseEntitySlot(state *meshPassState, context *PassContext, entity ecs.En
 		bucket.slotEntity[slot] = moved
 		bucket.entityToSlot[moved] = slot
 		if global, ok := ecs.Get[transform.GlobalTransform](context.World, moved); ok {
-			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.buffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
+			writeBuffer(context.Device, context.Queue, context.Encoder, bucket.modelBuffer, uint64(slot)*matrixSize, bytesOf(&global.Matrix))
 		}
+		material := materialDataUniform{BaseColor: [4]float32{1, 1, 1, 1}}
+		if mat, ok := ecs.Get[Material](context.World, moved); ok {
+			material.BaseColor = mat.BaseColor
+		}
+		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.materialBuffer, uint64(slot)*materialDataSize, bytesOf(&material))
 	}
 	bucket.slotEntity = bucket.slotEntity[:last]
 	delete(bucket.entityToSlot, entity)
@@ -530,7 +575,7 @@ const minHandleCapacity uint32 = 64
 // reuploaded.
 func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.BindGroupLayout) error {
 	required := uint32(len(h.slotEntity))
-	if h.capacity >= required && h.buffer != nil {
+	if h.capacity >= required && h.modelBuffer != nil && h.materialBuffer != nil {
 		return nil
 	}
 	newCapacity := h.capacity
@@ -544,7 +589,7 @@ func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.
 		newCapacity = minHandleCapacity
 	}
 
-	buffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+	modelBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "mesh model buffer",
 		Size:  uint64(newCapacity) * matrixSize,
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst,
@@ -552,27 +597,39 @@ func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.
 	if err != nil {
 		return fmt.Errorf("mesh pass: model buffer: %w", err)
 	}
-	bindGroup, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "mesh model bind group",
-		Layout: layout,
-		Entries: []wgpu.BindGroupEntry{{
-			Binding: 0,
-			Buffer:  buffer,
-			Offset:  0,
-			Size:    wgpu.WholeSize,
-		}},
+	materialBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+		Label: "mesh material buffer",
+		Size:  uint64(newCapacity) * materialDataSize,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst,
 	})
 	if err != nil {
-		buffer.Release()
-		return fmt.Errorf("mesh pass: model bind group: %w", err)
+		modelBuffer.Release()
+		return fmt.Errorf("mesh pass: material buffer: %w", err)
+	}
+	bindGroup, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
+		Label:  "mesh per-handle bind group",
+		Layout: layout,
+		Entries: []wgpu.BindGroupEntry{
+			{Binding: 0, Buffer: modelBuffer, Offset: 0, Size: wgpu.WholeSize},
+			{Binding: 1, Buffer: materialBuffer, Offset: 0, Size: wgpu.WholeSize},
+		},
+	})
+	if err != nil {
+		modelBuffer.Release()
+		materialBuffer.Release()
+		return fmt.Errorf("mesh pass: per-handle bind group: %w", err)
 	}
 	if h.bindGroup != nil {
 		h.bindGroup.Release()
 	}
-	if h.buffer != nil {
-		h.buffer.Release()
+	if h.modelBuffer != nil {
+		h.modelBuffer.Release()
 	}
-	h.buffer = buffer
+	if h.materialBuffer != nil {
+		h.materialBuffer.Release()
+	}
+	h.modelBuffer = modelBuffer
+	h.materialBuffer = materialBuffer
 	h.bindGroup = bindGroup
 	h.capacity = newCapacity
 	return nil

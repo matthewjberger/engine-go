@@ -31,6 +31,7 @@ func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	ecs.Register[transform.Parent](engine)
 	ecs.Register[transform.LocalTransformDirty](engine)
 	ecs.Register[render.RenderMesh](engine)
+	ecs.Register[render.Material](engine)
 	ecs.Register[render.Light](engine)
 
 	meshAssets := render.NewMeshAssets()

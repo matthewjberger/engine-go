@@ -16,10 +16,11 @@ import (
 	"indigo/window"
 )
 
-// MeshSet is stashed as a resource so the reset system can spawn a
-// fresh wall of bricks with the right per-row colors.
-type MeshSet struct {
-	Meshes brickMeshes
+// PaletteResource is stashed as a resource so the reset system can
+// spawn a fresh wall of bricks with the right per-row material
+// colors against the shared white-cube mesh.
+type PaletteResource struct {
+	Palette brickPalette
 }
 
 func setupLogging() {
@@ -83,12 +84,12 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	}
 
 	assets := ecs.Resource[render.MeshAssetsResource](engine).Assets
-	meshes, err := registerBreakoutMeshes(renderer.Device, assets)
+	palette, err := registerBreakoutPalette(renderer.Device, assets)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ecs.SetResource(game, MeshSet{Meshes: meshes})
-	spawnBreakoutScene(worlds, meshes)
+	ecs.SetResource(game, PaletteResource{Palette: palette})
+	spawnBreakoutScene(worlds, palette)
 	spawnBreakoutSun(engine)
 
 	if err := renderer.Graph.Compile(renderer.Device); err != nil {
@@ -182,22 +183,23 @@ func breakoutResetSystem(game *ecs.World) {
 	state.Lost = false
 	state.Started = false
 
-	meshes := ecs.Resource[MeshSet](game).Meshes
-	respawnBricks(app.Worlds{Engine: engine, Game: game}, meshes)
+	palette := ecs.Resource[PaletteResource](game).Palette
+	respawnBricks(app.Worlds{Engine: engine, Game: game}, palette)
 }
 
-func respawnBricks(worlds app.Worlds, meshes brickMeshes) {
+func respawnBricks(worlds app.Worlds, palette brickPalette) {
 	engineMask := ecs.MaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MaskOf[transform.GlobalTransform](worlds.Engine) |
 		ecs.MaskOf[transform.LocalTransformDirty](worlds.Engine) |
-		ecs.MaskOf[render.RenderMesh](worlds.Engine)
+		ecs.MaskOf[render.RenderMesh](worlds.Engine) |
+		ecs.MaskOf[render.Material](worlds.Engine)
 	brickMask := ecs.MaskOf[Brick](worlds.Game) | ecs.MaskOf[app.EngineEntity](worlds.Game)
 
 	brickWidth := brickHalfWidth * 2
 	totalWidth := brickWidth * brickCols
 	startX := -totalWidth*0.5 + brickHalfWidth
 	for row := 0; row < brickRows; row++ {
-		rowMesh := meshes.Rows[row%len(meshes.Rows)]
+		rowColor := palette.Rows[row%len(palette.Rows)]
 		score := (brickRows - row) * 10
 		z := float32(brickStartZ) + float32(row)*brickRowGap
 		for col := 0; col < brickCols; col++ {
@@ -209,7 +211,8 @@ func respawnBricks(worlds app.Worlds, meshes brickMeshes) {
 			local.Scale = transform.Vec3{brickHalfWidth * 2, brickHalfY * 2, brickHalfDepth * 2}
 			ecs.Set(worlds.Engine, engineEntity, local)
 			ecs.Set(worlds.Engine, engineEntity, transform.IdentityGlobalTransform())
-			ecs.Set(worlds.Engine, engineEntity, render.RenderMesh{Mesh: rowMesh})
+			ecs.Set(worlds.Engine, engineEntity, render.RenderMesh{Mesh: palette.Cube})
+			ecs.Set(worlds.Engine, engineEntity, render.Material{BaseColor: rowColor})
 
 			gameEntity := worlds.Game.Spawn(brickMask)
 			ecs.Set(worlds.Game, gameEntity, Brick{
