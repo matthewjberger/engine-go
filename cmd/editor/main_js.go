@@ -84,19 +84,20 @@ func main() {
 		last = now
 
 		syncUiPointer(worlds)
-		refreshHudLayout(worlds)
-		updateTreeScroll(worlds)
+		ctx := newHudContext(worlds)
+		ctx.refreshHudLayout()
+		ctx.updateTreeScroll()
 
 		app.TickFrame(worlds, demo, delta)
 		handleRightClick(worlds)
 		driveTextInputs(worlds)
 		handleUiClicks(worlds)
-		refreshModeButtons(worlds)
-		refreshMenuPopups(worlds)
-		refreshInteractiveHovers(worlds)
-		refreshEntityTree(worlds)
-		refreshInspector(worlds)
-		updateInspectorCaret(worlds)
+		ctx.refreshModeButtons()
+		ctx.refreshMenuPopups()
+		ctx.refreshInteractiveHovers()
+		ctx.refreshEntityTree()
+		ctx.refreshInspector()
+		ctx.updateInspectorCaret()
 
 		if err := render.RenderFrame(renderer, worlds.Engine); err != nil {
 			js.Global().Get("console").Call("error", "render error: "+err.Error())

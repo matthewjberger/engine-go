@@ -13,8 +13,6 @@ import (
 	"indigo/ecs"
 	"indigo/render"
 	"indigo/transform"
-	"indigo/ui"
-	"indigo/window"
 )
 
 // PaletteResource is stashed as a resource so the reset system can
@@ -41,50 +39,30 @@ func setupLogging() {
 	}
 }
 
-// buildWorlds creates engine + game worlds, layers breakout-specific
-// camera and game state on top of the engine defaults, builds two
-// schedules, configures the render graph, spawns the scene, and
-// compiles. Returns [app.Worlds] plus the breakout [app.App].
 func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
-	engine, err := app.NewEngineWorld(renderer)
+	worlds, err := app.NewWorlds(renderer)
 	if err != nil {
 		log.Fatal(err)
 	}
+	engine := worlds.Engine
+
 	ecs.SetResource(engine, breakoutCamera())
 
-	game := ecs.New()
-	ecs.Register[Paddle](game)
-	ecs.Register[Ball](game)
-	ecs.Register[Brick](game)
-	ecs.Register[app.EngineEntity](game)
-	ecs.SetResource(game, window.Window{})
-	ecs.SetResource(game, app.EngineRef{World: engine})
-	ecs.SetResource(game, GameState{Lives: startingLives})
+	ecs.Register[Paddle](worlds.Game)
+	ecs.Register[Ball](worlds.Game)
+	ecs.Register[Brick](worlds.Game)
+	ecs.SetResource(worlds.Game, GameState{Lives: startingLives})
 
-	engineSchedule := ecs.NewSchedule()
-	engineSchedule.Push("graphics_toggles", render.UpdateGraphicsToggles)
-	engineSchedule.Push("transform_propagation", transform.UpdateGlobalTransforms)
+	worlds.EngineSchedule.Push("graphics_toggles", render.UpdateGraphicsToggles)
+	worlds.EngineSchedule.Push("transform_propagation", transform.UpdateGlobalTransforms)
 
-	gameSchedule := ecs.NewSchedule()
-	gameSchedule.Push("input", breakoutInputSystem)
-	gameSchedule.Push("ball", breakoutBallSystem)
-	gameSchedule.Push("win", breakoutWinSystem)
-	gameSchedule.Push("reset", breakoutResetSystem)
-	gameSchedule.Push("sync", breakoutSyncSystem)
+	worlds.GameSchedule.Push("input", breakoutInputSystem)
+	worlds.GameSchedule.Push("ball", breakoutBallSystem)
+	worlds.GameSchedule.Push("win", breakoutWinSystem)
+	worlds.GameSchedule.Push("reset", breakoutResetSystem)
+	worlds.GameSchedule.Push("sync", breakoutSyncSystem)
 
-	uiWorld := ui.NewWorld(renderer.Config.Width, renderer.Config.Height)
-	ecs.SetResource(engine, ui.WorldRef{World: uiWorld})
-	hud := buildBreakoutHud(uiWorld)
-	ecs.SetResource(engine, hud)
-
-	worlds := app.Worlds{
-		Engine:         engine,
-		Game:           game,
-		UI:             uiWorld,
-		EngineSchedule: engineSchedule,
-		GameSchedule:   gameSchedule,
-		UISchedule:     ui.NewSchedule(),
-	}
+	ecs.SetResource(engine, buildBreakoutHud(worlds.UI))
 
 	demo := breakoutApp()
 	if demo.ConfigureRenderGraph != nil {
@@ -96,7 +74,7 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ecs.SetResource(game, PaletteResource{Palette: palette})
+	ecs.SetResource(worlds.Game, PaletteResource{Palette: palette})
 	spawnBreakoutScene(worlds, palette)
 	spawnBreakoutSun(engine)
 

@@ -79,24 +79,24 @@ func main() {
 		last = now
 
 		syncUiPointer(worlds)
-		refreshHudLayout(worlds)
-		// Consume tree-scroll wheel input BEFORE TickFrame runs the
-		// pan-orbit camera; otherwise both systems read the same
-		// Wheel value and the camera also zooms.
-		updateTreeScroll(worlds)
+		ctx := newHudContext(worlds)
+		ctx.refreshHudLayout()
+		// Consume wheel before TickFrame so pan-orbit doesn't also
+		// zoom on the same wheel event.
+		ctx.updateTreeScroll()
 
 		app.TickFrame(worlds, demo, delta)
 		handleRightClick(worlds)
 		driveTextInputs(worlds)
 		handleUiClicks(worlds)
-		refreshModeButtons(worlds)
-		refreshMenuPopups(worlds)
-		refreshInteractiveHovers(worlds)
-		refreshEntityTree(worlds)
-		refreshInspector(worlds)
-		updateInspectorCaret(worlds)
+		ctx.refreshModeButtons()
+		ctx.refreshMenuPopups()
+		ctx.refreshInteractiveHovers()
+		ctx.refreshEntityTree()
+		ctx.refreshInspector()
+		ctx.updateInspectorCaret()
 
-		if hud := ecs.Resource[HudHandles](worlds.Engine); hud.RequestExit {
+		if ctx.Hud.RequestExit {
 			glfwWindow.SetShouldClose(true)
 		}
 

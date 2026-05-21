@@ -6,6 +6,7 @@ import (
 	"indigo/ecs"
 	"indigo/render"
 	"indigo/transform"
+	"indigo/ui"
 	"indigo/window"
 )
 
@@ -57,10 +58,10 @@ func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	return engine, nil
 }
 
-// Worlds bundles the engine + game + UI worlds and their schedules.
-// UI is opt-in: apps that don't use retained UI leave the UI fields
-// nil and [TickFrame] / [PostFrame] skip them. Mirrors nightshade's
-// world.core / world.ui split.
+// Worlds bundles the engine, game, and UI worlds plus their
+// schedules. Use [NewWorlds] to construct one with cross-world
+// bridges (EngineRef on the game world, ui.WorldRef on the engine
+// world) pre-installed.
 type Worlds struct {
 	Engine *ecs.World
 	Game   *ecs.World
@@ -69,6 +70,36 @@ type Worlds struct {
 	EngineSchedule *ecs.Schedule
 	GameSchedule   *ecs.Schedule
 	UISchedule     *ecs.Schedule
+}
+
+// NewWorlds returns a fully-wired Worlds: engine world via
+// [NewEngineWorld], a game world with EngineRef installed, a UI
+// world with ui.WorldRef installed on the engine world, and empty
+// schedules ready for the app to populate. Eliminates the
+// hand-wiring of cross-world resource bridges that apps used to do
+// in their own setup.
+func NewWorlds(renderer *render.Renderer) (Worlds, error) {
+	engine, err := NewEngineWorld(renderer)
+	if err != nil {
+		return Worlds{}, err
+	}
+
+	game := ecs.New()
+	ecs.Register[EngineEntity](game)
+	ecs.SetResource(game, window.Window{})
+	ecs.SetResource(game, EngineRef{World: engine})
+
+	uiWorld := ui.NewWorld(renderer.Config.Width, renderer.Config.Height)
+	ecs.SetResource(engine, ui.WorldRef{World: uiWorld})
+
+	return Worlds{
+		Engine:         engine,
+		Game:           game,
+		UI:             uiWorld,
+		EngineSchedule: ecs.NewSchedule(),
+		GameSchedule:   ecs.NewSchedule(),
+		UISchedule:     ui.NewSchedule(),
+	}, nil
 }
 
 // TickFrame runs the per-frame pre-render work: advance the window

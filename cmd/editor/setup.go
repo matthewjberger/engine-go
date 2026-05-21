@@ -86,19 +86,11 @@ type HudHandles struct {
 	ScaleLabel       ecs.Entity
 	MaterialLabel    ecs.Entity
 
-	// Per-frame mapping: tree row index → engine entity. Refreshed
-	// by refreshEntityTree, consulted by handleUiClicks.
 	TreeRowToEngine [hudTreeRowCount]ecs.Entity
 
-	RequestExit bool
-
+	RequestExit     bool
 	NameFocusedPrev bool
 
-	// Tree scroll state. TreeScrollPixels is a pixel-space accumulator
-	// (one wheel notch = 40 px, matching nightshade's
-	// handle_scroll factor) so fractional wheel deltas from
-	// trackpad input accumulate cleanly across frames.
-	// TreeScrollIndex is its row-quantized projection.
 	TreeScrollPixels float32
 	TreeScrollIndex  int
 }
@@ -121,46 +113,25 @@ func setupLogging() {
 }
 
 func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
-	engine, err := app.NewEngineWorld(renderer)
+	worlds, err := app.NewWorlds(renderer)
 	if err != nil {
 		log.Fatal(err)
 	}
+	engine := worlds.Engine
+
 	ecs.SetResource(engine, render.DefaultCamera())
 	ecs.SetResource(engine, render.DefaultPanOrbitController())
 	ecs.SetResource(engine, render.NewPicking())
 	ecs.SetResource(engine, render.NewGizmos())
 
-	game := ecs.New()
-	ecs.Register[Spinner](game)
-	ecs.Register[app.EngineEntity](game)
-	ecs.SetResource(game, window.Window{})
-	ecs.SetResource(game, app.EngineRef{World: engine})
+	ecs.Register[Spinner](worlds.Game)
+	ecs.SetResource(engine, buildHud(worlds.UI))
 
-	uiWorld := ui.NewWorld(renderer.Config.Width, renderer.Config.Height)
-	ecs.SetResource(engine, ui.WorldRef{World: uiWorld})
-	hud := buildHud(uiWorld)
-	ecs.SetResource(engine, hud)
-
-	engineSchedule := ecs.NewSchedule()
-	engineSchedule.Push("graphics_toggles", render.UpdateGraphicsToggles)
-	engineSchedule.Push("gizmos", render.UpdateGizmos)
-	engineSchedule.Push("pan_orbit_camera", render.UpdatePanOrbitCamera)
-	engineSchedule.Push("transform_propagation", transform.UpdateGlobalTransforms)
-
-	// Editor leaves cubes stationary; manipulation happens via
-	// gizmos rather than the spinner system. advanceSpinners is
-	// kept around for reference but not scheduled.
-	gameSchedule := ecs.NewSchedule()
+	worlds.EngineSchedule.Push("graphics_toggles", render.UpdateGraphicsToggles)
+	worlds.EngineSchedule.Push("gizmos", render.UpdateGizmos)
+	worlds.EngineSchedule.Push("pan_orbit_camera", render.UpdatePanOrbitCamera)
+	worlds.EngineSchedule.Push("transform_propagation", transform.UpdateGlobalTransforms)
 	_ = advanceSpinners
-
-	worlds := app.Worlds{
-		Engine:         engine,
-		Game:           game,
-		UI:             uiWorld,
-		EngineSchedule: engineSchedule,
-		GameSchedule:   gameSchedule,
-		UISchedule:     ui.NewSchedule(),
-	}
 
 	demo := editorApp()
 	if demo.Initialize != nil {

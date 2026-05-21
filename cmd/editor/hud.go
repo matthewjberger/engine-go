@@ -12,6 +12,53 @@ import (
 	"indigo/window"
 )
 
+// HudContext is the per-frame snapshot of pointers HUD systems
+// share. Computed once at the top of the frame and passed by
+// pointer to every refresh / handler function so they stop
+// repeating ecs.Resource[...] lookups.
+type HudContext struct {
+	Worlds  app.Worlds
+	Engine  *ecs.World
+	UI      *ecs.World
+	Input   *render.Input
+	Hud     *HudHandles
+	Pointer *ui.PointerState
+	Gizmo   *render.Gizmos
+}
+
+func newHudContext(worlds app.Worlds) *HudContext {
+	if worlds.UI == nil {
+		return nil
+	}
+	return &HudContext{
+		Worlds:  worlds,
+		Engine:  worlds.Engine,
+		UI:      worlds.UI,
+		Input:   ecs.Resource[render.Input](worlds.Engine),
+		Hud:     ecs.Resource[HudHandles](worlds.Engine),
+		Pointer: ecs.Resource[ui.PointerState](worlds.UI),
+		Gizmo:   *ecs.Resource[*render.Gizmos](worlds.Engine),
+	}
+}
+
+func (c *HudContext) setText(entity ecs.Entity, content string) {
+	if t, ok := ecs.GetMut[ui.Text](c.UI, entity); ok {
+		t.Content = content
+	}
+}
+
+func (c *HudContext) setColor(entity ecs.Entity, rgba [4]float32) {
+	if col, ok := ecs.GetMut[ui.Color](c.UI, entity); ok {
+		col.RGBA = rgba
+	}
+}
+
+func (c *HudContext) setTextAlpha(entity ecs.Entity, alpha float32) {
+	if t, ok := ecs.GetMut[ui.Text](c.UI, entity); ok {
+		t.Color[3] = alpha
+	}
+}
+
 func syncUiPointer(worlds app.Worlds) {
 	if worlds.UI == nil {
 		return
@@ -327,33 +374,28 @@ func nodeContains(world *ecs.World, entity ecs.Entity, x, y float32) bool {
 	return node.Resolved.Contains(x, y)
 }
 
-func refreshMenuPopups(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	setMenuVisible(worlds.UI, hud.FileMenu, hud.OpenMenu == menuFileOpen)
-	setMenuVisible(worlds.UI, hud.EditMenu, hud.OpenMenu == menuEditOpen)
-	setMenuVisible(worlds.UI, hud.ViewMenu, hud.OpenMenu == menuViewOpen)
-	setMenuVisible(worlds.UI, hud.ContextMenu, hud.OpenMenu == menuContextOpen)
-
-	occludeTreeTextBehindPopup(worlds.UI, hud)
+func (c *HudContext) refreshMenuPopups() {
+	setMenuVisible(c.UI, c.Hud.FileMenu, c.Hud.OpenMenu == menuFileOpen)
+	setMenuVisible(c.UI, c.Hud.EditMenu, c.Hud.OpenMenu == menuEditOpen)
+	setMenuVisible(c.UI, c.Hud.ViewMenu, c.Hud.OpenMenu == menuViewOpen)
+	setMenuVisible(c.UI, c.Hud.ContextMenu, c.Hud.OpenMenu == menuContextOpen)
+	c.occludeTreeTextBehindPopup()
 }
 
-func occludeTreeTextBehindPopup(world *ecs.World, hud *HudHandles) {
+func (c *HudContext) occludeTreeTextBehindPopup() {
 	var popup *menuPopup
-	switch hud.OpenMenu {
+	switch c.Hud.OpenMenu {
 	case menuFileOpen:
-		popup = &hud.FileMenu
+		popup = &c.Hud.FileMenu
 	case menuEditOpen:
-		popup = &hud.EditMenu
+		popup = &c.Hud.EditMenu
 	case menuViewOpen:
-		popup = &hud.ViewMenu
+		popup = &c.Hud.ViewMenu
 	}
 	var popupRect ui.Rect
 	hasPopup := false
 	if popup != nil {
-		if node, ok := ecs.Get[ui.Node](world, popup.Panel); ok {
+		if node, ok := ecs.Get[ui.Node](c.UI, popup.Panel); ok {
 			popupRect = node.Resolved
 			hasPopup = popupRect.Width > 0 && popupRect.Height > 0
 		}
@@ -362,11 +404,7 @@ func occludeTreeTextBehindPopup(world *ecs.World, hud *HudHandles) {
 		if entity.ID == 0 {
 			return
 		}
-		nodeRef, ok := ecs.Get[ui.Node](world, entity)
-		if !ok {
-			return
-		}
-		text, ok := ecs.GetMut[ui.Text](world, entity)
+		nodeRef, ok := ecs.Get[ui.Node](c.UI, entity)
 		if !ok {
 			return
 		}
@@ -374,47 +412,43 @@ func occludeTreeTextBehindPopup(world *ecs.World, hud *HudHandles) {
 			nodeRef.Resolved.Y < popupRect.Y+popupRect.Height &&
 			nodeRef.Resolved.Y+nodeRef.Resolved.Height > popupRect.Y
 		if hidden {
-			text.Color[3] = 0
+			c.setTextAlpha(entity, 0)
 		} else {
-			text.Color[3] = 1
+			c.setTextAlpha(entity, 1)
 		}
 	}
-	apply(hud.TreeTitle)
-	for _, row := range hud.TreeRows {
+	apply(c.Hud.TreeTitle)
+	for _, row := range c.Hud.TreeRows {
 		apply(row)
 	}
 }
 
-func refreshInteractiveHovers(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
+func (c *HudContext) refreshInteractiveHovers() {
 	idle := [4]float32{0.14, 0.16, 0.20, 1}
 	hover := [4]float32{0.32, 0.62, 0.98, 1}
-	for _, m := range []menuPopup{hud.FileMenu, hud.EditMenu, hud.ViewMenu, hud.ContextMenu} {
+	for _, m := range []menuPopup{c.Hud.FileMenu, c.Hud.EditMenu, c.Hud.ViewMenu, c.Hud.ContextMenu} {
 		for i := 0; i < m.Count; i++ {
-			paintHover(worlds.UI, m.Items[i], idle, hover)
+			paintHover(c.UI, m.Items[i], idle, hover)
 		}
 	}
-	for _, b := range []ecs.Entity{hud.FileButton, hud.EditButton, hud.ViewButton} {
-		paintHover(worlds.UI, b, idle, hover)
+	for _, b := range []ecs.Entity{c.Hud.FileButton, c.Hud.EditButton, c.Hud.ViewButton} {
+		paintHover(c.UI, b, idle, hover)
 	}
 
-	selected, hasSelected := render.SelectedTarget(worlds.Engine)
-	for i, row := range hud.TreeRows {
+	selected, hasSelected := render.SelectedTarget(c.Engine)
+	for i, row := range c.Hud.TreeRows {
 		if row.ID == 0 {
 			continue
 		}
-		target := hud.TreeRowToEngine[i]
+		target := c.Hud.TreeRowToEngine[i]
 		if hasSelected && target == selected {
 			continue
 		}
-		interactive, ok := ecs.Get[ui.Interactive](worlds.UI, row)
+		interactive, ok := ecs.Get[ui.Interactive](c.UI, row)
 		if !ok {
 			continue
 		}
-		color, ok := ecs.GetMut[ui.Color](worlds.UI, row)
+		color, ok := ecs.GetMut[ui.Color](c.UI, row)
 		if !ok {
 			continue
 		}
@@ -464,42 +498,33 @@ func setMenuVisible(world *ecs.World, menu menuPopup, visible bool) {
 	}
 }
 
-func refreshHudLayout(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	w := ecs.Resource[window.Window](worlds.UI).Viewport
+func (c *HudContext) refreshHudLayout() {
+	w := ecs.Resource[window.Window](c.UI).Viewport
 	width := float32(w.Width)
 	height := float32(w.Height)
 	changed := false
-	if node, ok := ecs.GetMut[ui.Node](worlds.UI, hud.TopBar); ok && node.Width != width {
+	if node, ok := ecs.GetMut[ui.Node](c.UI, c.Hud.TopBar); ok && node.Width != width {
 		node.Width = width
 		changed = true
 	}
 	panelHeight := height - hudTopBarHeight
-	if node, ok := ecs.GetMut[ui.Node](worlds.UI, hud.LeftPanel); ok && node.Height != panelHeight {
+	if node, ok := ecs.GetMut[ui.Node](c.UI, c.Hud.LeftPanel); ok && node.Height != panelHeight {
 		node.Height = panelHeight
 		changed = true
 	}
-	if node, ok := ecs.GetMut[ui.Node](worlds.UI, hud.RightPanel); ok && node.Height != panelHeight {
+	if node, ok := ecs.GetMut[ui.Node](c.UI, c.Hud.RightPanel); ok && node.Height != panelHeight {
 		node.Height = panelHeight
 		changed = true
 	}
 	if changed {
-		ui.MarkLayoutDirty(worlds.UI)
+		ui.MarkLayoutDirty(c.UI)
 	}
 }
 
-func refreshModeButtons(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	gizmo := *ecs.Resource[*render.Gizmos](worlds.Engine)
-	setModeColor(worlds.UI, hud.TranslateButton, gizmo.Mode == render.GizmoTranslate)
-	setModeColor(worlds.UI, hud.RotateButton, gizmo.Mode == render.GizmoRotate)
-	setModeColor(worlds.UI, hud.ScaleButton, gizmo.Mode == render.GizmoScale)
+func (c *HudContext) refreshModeButtons() {
+	setModeColor(c.UI, c.Hud.TranslateButton, c.Gizmo.Mode == render.GizmoTranslate)
+	setModeColor(c.UI, c.Hud.RotateButton, c.Gizmo.Mode == render.GizmoRotate)
+	setModeColor(c.UI, c.Hud.ScaleButton, c.Gizmo.Mode == render.GizmoScale)
 }
 
 func setModeColor(world *ecs.World, entity ecs.Entity, active bool) {
@@ -519,18 +544,13 @@ type namedEntity struct {
 	Name   string
 }
 
-func refreshEntityTree(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
+func (c *HudContext) refreshEntityTree() {
+	selected, hasSelected := render.SelectedTarget(c.Engine)
 
-	selected, hasSelected := render.SelectedTarget(worlds.Engine)
-
-	nameMask := ecs.MaskOf[app.Name](worlds.Engine)
+	nameMask := ecs.MaskOf[app.Name](c.Engine)
 	var entries []namedEntity
-	worlds.Engine.ForEach(nameMask, 0, func(entity ecs.Entity, table *ecs.Archetype, columnIndex int) {
-		names, _ := ecs.Column[app.Name](worlds.Engine, table)
+	c.Engine.ForEach(nameMask, 0, func(entity ecs.Entity, table *ecs.Archetype, columnIndex int) {
+		names, _ := ecs.Column[app.Name](c.Engine, table)
 		entries = append(entries, namedEntity{Entity: entity, Name: names[columnIndex].Value})
 	})
 	sort.Slice(entries, func(i, j int) bool {
@@ -543,144 +563,111 @@ func refreshEntityTree(worlds app.Worlds) {
 		maxScroll = 0
 	}
 	maxScrollPixels := float32(maxScroll) * rowStride
-	if hud.TreeScrollPixels > maxScrollPixels {
-		hud.TreeScrollPixels = maxScrollPixels
+	if c.Hud.TreeScrollPixels > maxScrollPixels {
+		c.Hud.TreeScrollPixels = maxScrollPixels
 	}
-	if hud.TreeScrollPixels < 0 {
-		hud.TreeScrollPixels = 0
+	if c.Hud.TreeScrollPixels < 0 {
+		c.Hud.TreeScrollPixels = 0
 	}
-	hud.TreeScrollIndex = int(hud.TreeScrollPixels / rowStride)
-	if hud.TreeScrollIndex > maxScroll {
-		hud.TreeScrollIndex = maxScroll
+	c.Hud.TreeScrollIndex = int(c.Hud.TreeScrollPixels / rowStride)
+	if c.Hud.TreeScrollIndex > maxScroll {
+		c.Hud.TreeScrollIndex = maxScroll
 	}
-	offset := hud.TreeScrollIndex
+	offset := c.Hud.TreeScrollIndex
 
 	for i := 0; i < hudTreeRowCount; i++ {
-		row := hud.TreeRows[i]
+		row := c.Hud.TreeRows[i]
 		idx := i + offset
 		if idx < len(entries) {
-			hud.TreeRowToEngine[i] = entries[idx].Entity
-			if label, ok := ecs.GetMut[ui.Text](worlds.UI, row); ok {
-				label.Content = entries[idx].Name
-			}
-			if color, ok := ecs.GetMut[ui.Color](worlds.UI, row); ok {
-				if hasSelected && entries[idx].Entity == selected {
-					color.RGBA = [4]float32{0.22, 0.5, 0.86, 1}
-				} else {
-					color.RGBA = [4]float32{0.10, 0.11, 0.14, 1}
-				}
+			c.Hud.TreeRowToEngine[i] = entries[idx].Entity
+			c.setText(row, entries[idx].Name)
+			if hasSelected && entries[idx].Entity == selected {
+				c.setColor(row, [4]float32{0.22, 0.5, 0.86, 1})
+			} else {
+				c.setColor(row, [4]float32{0.10, 0.11, 0.14, 1})
 			}
 		} else {
-			hud.TreeRowToEngine[i] = ecs.Entity{}
-			if label, ok := ecs.GetMut[ui.Text](worlds.UI, row); ok {
-				label.Content = ""
-			}
-			if color, ok := ecs.GetMut[ui.Color](worlds.UI, row); ok {
-				color.RGBA = [4]float32{0, 0, 0, 0}
-			}
+			c.Hud.TreeRowToEngine[i] = ecs.Entity{}
+			c.setText(row, "")
+			c.setColor(row, [4]float32{0, 0, 0, 0})
 		}
 	}
 }
 
-func updateTreeScroll(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	input := ecs.Resource[render.Input](worlds.Engine)
-	if input.Wheel != 0 {
-		leftNode, ok := ecs.Get[ui.Node](worlds.UI, hud.LeftPanel)
-		if ok && leftNode.Resolved.Contains(input.MousePosition[0], input.MousePosition[1]) {
-			hud.TreeScrollPixels -= input.Wheel * 40
-			input.Wheel = 0
+func (c *HudContext) updateTreeScroll() {
+	if c.Input.Wheel != 0 {
+		leftNode, ok := ecs.Get[ui.Node](c.UI, c.Hud.LeftPanel)
+		if ok && leftNode.Resolved.Contains(c.Input.MousePosition[0], c.Input.MousePosition[1]) {
+			c.Hud.TreeScrollPixels -= c.Input.Wheel * 40
+			c.Input.Wheel = 0
 		}
 	}
 	const rowStride float32 = hudTreeRowHeight + 4
-	if hud.TreeScrollPixels < 0 {
-		hud.TreeScrollPixels = 0
+	if c.Hud.TreeScrollPixels < 0 {
+		c.Hud.TreeScrollPixels = 0
 	}
-	hud.TreeScrollIndex = int(hud.TreeScrollPixels / rowStride)
+	c.Hud.TreeScrollIndex = int(c.Hud.TreeScrollPixels / rowStride)
 }
 
-func refreshInspector(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	target, hasTarget := render.SelectedTarget(worlds.Engine)
-	pointer := ecs.Resource[ui.PointerState](worlds.UI)
-	editing := pointer.FocusedEntity == hud.InspectorName
+func (c *HudContext) refreshInspector() {
+	target, hasTarget := render.SelectedTarget(c.Engine)
+	editing := c.Pointer.FocusedEntity == c.Hud.InspectorName
 
 	if !hasTarget {
-		syncInspectorName(worlds.UI, hud.InspectorName, "No entity selected", false)
-		setInspectorText(worlds.UI, hud.InspectorID, "")
-		setInspectorText(worlds.UI, hud.TranslationLabel, "")
-		setInspectorText(worlds.UI, hud.RotationLabel, "")
-		setInspectorText(worlds.UI, hud.ScaleLabel, "")
-		setInspectorText(worlds.UI, hud.MaterialLabel, "")
+		c.syncInspectorName("No entity selected", false)
+		c.setText(c.Hud.InspectorID, "")
+		c.setText(c.Hud.TranslationLabel, "")
+		c.setText(c.Hud.RotationLabel, "")
+		c.setText(c.Hud.ScaleLabel, "")
+		c.setText(c.Hud.MaterialLabel, "")
 		return
 	}
 
 	name := "(unnamed)"
-	if n, ok := ecs.Get[app.Name](worlds.Engine, target); ok {
+	if n, ok := ecs.Get[app.Name](c.Engine, target); ok {
 		name = n.Value
 	}
-	syncInspectorName(worlds.UI, hud.InspectorName, name, editing)
-	setInspectorText(worlds.UI, hud.InspectorID, fmt.Sprintf("ID   %d", target.ID))
+	c.syncInspectorName(name, editing)
+	c.setText(c.Hud.InspectorID, fmt.Sprintf("ID   %d", target.ID))
 
-	if local, ok := ecs.Get[transform.LocalTransform](worlds.Engine, target); ok {
-		setInspectorText(worlds.UI, hud.TranslationLabel, fmt.Sprintf("POS  %s", formatVec3(local.Translation)))
-		setInspectorText(worlds.UI, hud.RotationLabel, fmt.Sprintf("ROT  %s", formatQuat(local.Rotation)))
-		setInspectorText(worlds.UI, hud.ScaleLabel, fmt.Sprintf("SCL  %s", formatVec3(local.Scale)))
+	if local, ok := ecs.Get[transform.LocalTransform](c.Engine, target); ok {
+		c.setText(c.Hud.TranslationLabel, fmt.Sprintf("POS  %s", formatVec3(local.Translation)))
+		c.setText(c.Hud.RotationLabel, fmt.Sprintf("ROT  %s", formatQuat(local.Rotation)))
+		c.setText(c.Hud.ScaleLabel, fmt.Sprintf("SCL  %s", formatVec3(local.Scale)))
 	} else {
-		setInspectorText(worlds.UI, hud.TranslationLabel, "")
-		setInspectorText(worlds.UI, hud.RotationLabel, "")
-		setInspectorText(worlds.UI, hud.ScaleLabel, "")
+		c.setText(c.Hud.TranslationLabel, "")
+		c.setText(c.Hud.RotationLabel, "")
+		c.setText(c.Hud.ScaleLabel, "")
 	}
 
-	if mat, ok := ecs.Get[render.Material](worlds.Engine, target); ok {
-		setInspectorText(worlds.UI, hud.MaterialLabel, fmt.Sprintf("MAT  %s", formatRGBA(mat.BaseColor)))
+	if mat, ok := ecs.Get[render.Material](c.Engine, target); ok {
+		c.setText(c.Hud.MaterialLabel, fmt.Sprintf("MAT  %s", formatRGBA(mat.BaseColor)))
 	} else {
-		setInspectorText(worlds.UI, hud.MaterialLabel, "")
+		c.setText(c.Hud.MaterialLabel, "")
 	}
 }
 
-func setInspectorText(world *ecs.World, entity ecs.Entity, content string) {
-	if label, ok := ecs.GetMut[ui.Text](world, entity); ok {
-		label.Content = content
-	}
-}
-
-func syncInspectorName(world *ecs.World, entity ecs.Entity, name string, editing bool) {
+func (c *HudContext) syncInspectorName(name string, editing bool) {
+	entity := c.Hud.InspectorName
 	if !editing {
-		if ti, ok := ecs.GetMut[ui.TextInput](world, entity); ok {
+		if ti, ok := ecs.GetMut[ui.TextInput](c.UI, entity); ok {
 			ti.Buffer = name
 			if ti.Caret > len(name) {
 				ti.Caret = len(name)
 			}
 		}
-		if label, ok := ecs.GetMut[ui.Text](world, entity); ok {
-			label.Content = name
-		}
+		c.setText(entity, name)
 	}
-	if color, ok := ecs.GetMut[ui.Color](world, entity); ok {
-		if editing {
-			color.RGBA = [4]float32{0.18, 0.30, 0.55, 1}
-		} else {
-			color.RGBA = [4]float32{0.12, 0.13, 0.16, 1}
-		}
+	if editing {
+		c.setColor(entity, [4]float32{0.18, 0.30, 0.55, 1})
+	} else {
+		c.setColor(entity, [4]float32{0.12, 0.13, 0.16, 1})
 	}
 }
 
-func updateInspectorCaret(worlds app.Worlds) {
-	if worlds.UI == nil {
-		return
-	}
-	hud := ecs.Resource[HudHandles](worlds.Engine)
-	pointer := ecs.Resource[ui.PointerState](worlds.UI)
-	editing := pointer.FocusedEntity == hud.InspectorName
-
-	caretColor, ok := ecs.GetMut[ui.Color](worlds.UI, hud.InspectorCaret)
+func (c *HudContext) updateInspectorCaret() {
+	editing := c.Pointer.FocusedEntity == c.Hud.InspectorName
+	caretColor, ok := ecs.GetMut[ui.Color](c.UI, c.Hud.InspectorCaret)
 	if !ok {
 		return
 	}
@@ -688,15 +675,15 @@ func updateInspectorCaret(worlds app.Worlds) {
 		caretColor.RGBA[3] = 0
 		return
 	}
-	field, ok := ecs.Get[ui.Node](worlds.UI, hud.InspectorName)
+	field, ok := ecs.Get[ui.Node](c.UI, c.Hud.InspectorName)
 	if !ok {
 		return
 	}
-	ti, ok := ecs.Get[ui.TextInput](worlds.UI, hud.InspectorName)
+	ti, ok := ecs.Get[ui.TextInput](c.UI, c.Hud.InspectorName)
 	if !ok {
 		return
 	}
-	label, ok := ecs.Get[ui.Text](worlds.UI, hud.InspectorName)
+	label, ok := ecs.Get[ui.Text](c.UI, c.Hud.InspectorName)
 	if !ok {
 		return
 	}
@@ -716,7 +703,7 @@ func updateInspectorCaret(worlds app.Worlds) {
 	caretX := originX + float32(caret)*advance
 	caretY := field.Resolved.Y + (field.Resolved.Height-glyphH)*0.5
 
-	caretNode, ok := ecs.GetMut[ui.Node](worlds.UI, hud.InspectorCaret)
+	caretNode, ok := ecs.GetMut[ui.Node](c.UI, c.Hud.InspectorCaret)
 	if !ok {
 		return
 	}
