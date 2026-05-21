@@ -5,10 +5,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cogentcore/webgpu/wgpu"
 
@@ -146,11 +149,39 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 		[]render.MeshHandle{primitives.UnitTriangle, primitives.UnitQuad, primitives.UnitCube},
 		[]string{"Triangle", "Quad", "Cube"},
 	)
+	loadDefaultGltf(engine, renderer, "assets/gltf/DamagedHelmet.glb")
 
 	if err := renderer.Graph.Compile(renderer.Device); err != nil {
 		log.Fatal(err)
 	}
 	return worlds, demo
+}
+
+// loadDefaultGltf imports a .glb / .gltf at editor startup so the
+// view isn't just primitives. Silently no-ops when the file is
+// missing so checkouts without the asset still launch.
+func loadDefaultGltf(engine *ecs.World, renderer *render.Renderer, path string) {
+	if _, err := os.Stat(path); err != nil {
+		return
+	}
+	assets := ecs.MustResource[render.MeshAssetsResource](engine).Assets
+	cache := ecs.MustResource[render.TextureCacheResource](engine).Cache
+	scene, err := render.LoadGltfFile(renderer.Device, renderer.Queue, assets, cache, path)
+	if err != nil {
+		log.Printf("gltf load failed: %v", err)
+		return
+	}
+	entities := render.SpawnLoadedScene(engine, scene)
+	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	nameMask := ecs.MustMaskOf[app.Name](engine)
+	for i, e := range entities {
+		label := scene.Nodes[i].Name
+		if label == "" {
+			label = fmt.Sprintf("%s/node_%d", baseName, i)
+		}
+		engine.AddComponents(e, nameMask)
+		ecs.Set(engine, e, app.Name{Value: label})
+	}
 }
 
 // editorApp wires the editor's render pipeline: sky -> mesh -> grid
@@ -445,6 +476,9 @@ func initializeWorldEntities(worlds app.Worlds, meshes []render.MeshHandle, mesh
 	index := 0
 	for x := -gridExtent; x <= gridExtent; x++ {
 		for z := -gridExtent; z <= gridExtent; z++ {
+			if x >= -1 && x <= 1 && z >= -1 && z <= 1 {
+				continue
+			}
 			engineEntity := worlds.Engine.Spawn(engineMask)
 			local := transform.FromTranslation(transform.Vec3{
 				float32(x) * gridSpacing,

@@ -7,8 +7,11 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/cogentcore/webgpu/wgpu"
@@ -19,6 +22,7 @@ import (
 	"indigo/ecs"
 	"indigo/render"
 	"indigo/transform"
+	"indigo/ui"
 	"indigo/window"
 )
 
@@ -55,6 +59,7 @@ func main() {
 
 	worlds, demo := buildWorlds(renderer)
 	installInputCallbacks(glfwWindow, worlds.Engine)
+	installDropCallback(glfwWindow, worlds, renderer)
 
 	glfwWindow.SetSizeCallback(func(_ *glfw.Window, w, h int) {
 		if w <= 0 || h <= 0 {
@@ -117,6 +122,56 @@ func main() {
 		}
 
 		app.PostFrame(worlds)
+	}
+}
+
+// installDropCallback wires GLFW's drag-drop handler to load each
+// dropped .gltf or .glb file via [render.LoadGltfFile] and spawn its
+// scene into the engine world. Spawned entities get an [app.Name]
+// derived from the source node so they show up in the hierarchy
+// tree; the first root is auto-selected.
+func installDropCallback(glfwWindow *glfw.Window, worlds app.Worlds, renderer *render.Renderer) {
+	glfwWindow.SetDropCallback(func(_ *glfw.Window, paths []string) {
+		assets := ecs.MustResource[render.MeshAssetsResource](worlds.Engine).Assets
+		cache := ecs.MustResource[render.TextureCacheResource](worlds.Engine).Cache
+		for _, path := range paths {
+			ext := strings.ToLower(filepath.Ext(path))
+			if ext != ".gltf" && ext != ".glb" {
+				log.Printf("skip drop: unsupported extension %q", path)
+				continue
+			}
+			scene, err := render.LoadGltfFile(renderer.Device, renderer.Queue, assets, cache, path)
+			if err != nil {
+				log.Printf("gltf load failed: %v", err)
+				continue
+			}
+			entities := render.SpawnLoadedScene(worlds.Engine, scene)
+			baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			nameSpawned(worlds.Engine, entities, scene, baseName)
+			if len(scene.Roots) > 0 {
+				applyEntitySelection(worlds.Engine, entities[scene.Roots[0]])
+			}
+			if worlds.UI != nil {
+				ui.MarkLayoutDirty(worlds.UI)
+			}
+			log.Printf("gltf loaded: %s (%d nodes, %d meshes, %d materials, %d animations)",
+				path, len(scene.Nodes), len(scene.Meshes), len(scene.Materials), len(scene.Animations))
+		}
+	})
+}
+
+// nameSpawned attaches an [app.Name] component to each entity from
+// the spawned glTF scene. Empty source-node names fall back to
+// "<basename>/node_<index>" so every entity has a readable label.
+func nameSpawned(engine *ecs.World, entities []ecs.Entity, scene *render.LoadedScene, baseName string) {
+	nameMask := ecs.MustMaskOf[app.Name](engine)
+	for i, e := range entities {
+		label := scene.Nodes[i].Name
+		if label == "" {
+			label = fmt.Sprintf("%s/node_%d", baseName, i)
+		}
+		engine.AddComponents(e, nameMask)
+		ecs.Set(engine, e, app.Name{Value: label})
 	}
 }
 
