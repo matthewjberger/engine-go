@@ -49,11 +49,12 @@ const (
 	LayoutColumn
 )
 
-// Node is the rectangle component every UI entity carries. X and Y
-// are measured according to [Anchor] when the entity has no UI
-// [Parent]; when it does, X and Y are offsets inside the parent's
-// laid-out rectangle. The layout system fills [Resolved] with the
-// final screen-space rectangle each frame.
+// Node is the rectangle component every UI entity carries.
+// Resolved is the final screen-space rect filled by [LayoutSystem].
+// Higher [ZIndex] draws on top. [Clip], when non-zero, culls the
+// entity from render passes if its Resolved doesn't intersect.
+// [Grow] is the flex weight used to share unused axis space among
+// LayoutRow / LayoutColumn children.
 type Node struct {
 	X, Y          float32
 	Width, Height float32
@@ -61,7 +62,11 @@ type Node struct {
 	Padding       float32
 	Spacing       float32
 	Layout        LayoutMode
+	Grow          float32
+	ZIndex        int32
+	Clip          Rect
 	Resolved      Rect
+	Dirty         bool
 }
 
 // Rect is a screen-space rectangle in pixels.
@@ -114,6 +119,21 @@ type EntityClicked struct {
 	Entity ecs.Entity
 }
 
+// TextInput is the editable-text component. When the entity is
+// focused, [AdvanceTextInputs] appends typed runes to Buffer and
+// updates the entity's Text.Content for display.
+type TextInput struct {
+	Buffer string
+	Caret  int
+}
+
+// TextCommitted is emitted on Enter; consumers write Value back to
+// their model.
+type TextCommitted struct {
+	Entity ecs.Entity
+	Value  string
+}
+
 // Register installs every UI component on world. Call once per UI
 // world (NewWorld handles this for the standard case).
 func Register(world *ecs.World) {
@@ -122,4 +142,5 @@ func Register(world *ecs.World) {
 	ecs.Register[Text](world)
 	ecs.Register[Parent](world)
 	ecs.Register[Interactive](world)
+	ecs.Register[TextInput](world)
 }

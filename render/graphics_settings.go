@@ -1,6 +1,9 @@
 package render
 
-import "indigo/ecs"
+import (
+	"indigo/ecs"
+	"indigo/ui"
+)
 
 // GraphicsSettings is the engine's runtime toggle resource. Each pass
 // reads the relevant bool in Prepare/Execute and skips its work when
@@ -27,6 +30,11 @@ func DefaultGraphicsSettings() GraphicsSettings {
 // down slice from [Input] and clears nothing; [Input.BeginFrame]
 // resets the just-pressed slice each frame.
 func UpdateGraphicsToggles(world *ecs.World) {
+	if ecs.HasResource[ui.WorldRef](world) {
+		if ui.AnyTextInputFocused(ecs.Resource[ui.WorldRef](world).World) {
+			return
+		}
+	}
 	input := ecs.Resource[Input](world)
 	settings := ecs.Resource[GraphicsSettings](world)
 	for _, key := range input.KeysJustDown {

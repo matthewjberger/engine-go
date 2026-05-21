@@ -24,6 +24,12 @@ type Input struct {
 
 	KeysDown     map[rune]struct{}
 	KeysJustDown []rune
+
+	// Chars accumulates the actual TEXT characters typed this frame
+	// (after the OS applies modifiers, layout, IME, etc.). Distinct
+	// from KeysJustDown which is just raw key codes. UI text-input
+	// widgets read Chars; cleared by [InputBeginFrame].
+	Chars []rune
 }
 
 // NewInput returns an Input with its key maps allocated.
@@ -61,4 +67,5 @@ func InputBeginFrame(i *Input) {
 	i.MouseDelta = transform.Vec2{0, 0}
 	i.Wheel = 0
 	i.KeysJustDown = i.KeysJustDown[:0]
+	i.Chars = i.Chars[:0]
 }

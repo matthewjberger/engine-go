@@ -214,6 +214,11 @@ func NewUiTextPass(device *wgpu.Device, queue *wgpu.Queue, surfaceFormat wgpu.Te
 	}, nil
 }
 
+type textGlyphBatch struct {
+	start, end int
+	z          int32
+}
+
 func uiTextPrepare(s any, context *PassContext) error {
 	state := s.(*uiTextPassState)
 	state.count = 0
@@ -229,12 +234,15 @@ func uiTextPrepare(s any, context *PassContext) error {
 	cellW := float32(state.atlas.GlyphWidth)
 	cellH := float32(state.atlas.GlyphHeight)
 
+	state.scratch = state.scratch[:0]
+	var batches []textGlyphBatch
+
 	uiWorld.ForEach(mask, 0, func(entity ecs.Entity, table *ecs.Archetype, index int) {
 		nodes, _ := ecs.Column[ui.Node](uiWorld, table)
 		texts, _ := ecs.Column[ui.Text](uiWorld, table)
 		node := &nodes[index]
 		text := &texts[index]
-		if text.Content == "" {
+		if text.Content == "" || !visibleInClip(node) {
 			return
 		}
 		scale := text.Scale
@@ -245,22 +253,11 @@ func uiTextPrepare(s any, context *PassContext) error {
 		glyphH := cellH * scale
 		advance := (cellW + 1) * scale
 
-		var pen float32
-		for _, r := range text.Content {
-			column := state.atlas.LookupGlyph(r)
-			pen += advance
-			if column == 0 && r != ' ' {
-				continue
-			}
-			pen -= advance
-			break
-		}
 		labelWidth := float32(len([]rune(text.Content))) * advance
-		_ = pen
-
 		originX := node.Resolved.X + (node.Resolved.Width-labelWidth)*0.5
 		originY := node.Resolved.Y + (node.Resolved.Height-glyphH)*0.5
 
+		startIdx := len(state.scratch)
 		cursor := originX
 		for _, r := range text.Content {
 			column := state.atlas.LookupGlyph(r)
@@ -276,7 +273,14 @@ func uiTextPrepare(s any, context *PassContext) error {
 			})
 			cursor += advance
 		}
+		if len(state.scratch) > startIdx {
+			batches = append(batches, textGlyphBatch{start: startIdx, end: len(state.scratch), z: node.ZIndex})
+		}
 	})
+
+	if len(batches) > 1 {
+		sortTextBatches(state.scratch, batches)
+	}
 
 	state.count = uint32(len(state.scratch))
 	if state.count == 0 {
@@ -317,6 +321,21 @@ func uiTextExecute(s any, context *PassContext) error {
 	pass.End()
 	pass.Release()
 	return nil
+}
+
+func sortTextBatches(scratch []uiTextGlyphInstance, batches []textGlyphBatch) {
+	for i := 1; i < len(batches); i++ {
+		j := i
+		for j > 0 && batches[j-1].z > batches[j].z {
+			batches[j-1], batches[j] = batches[j], batches[j-1]
+			j--
+		}
+	}
+	out := make([]uiTextGlyphInstance, 0, len(scratch))
+	for _, b := range batches {
+		out = append(out, scratch[b.start:b.end]...)
+	}
+	copy(scratch, out)
 }
 
 func uiTextRelease(s any) {

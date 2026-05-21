@@ -79,10 +79,26 @@ func main() {
 		last = now
 
 		syncUiPointer(worlds)
+		refreshHudLayout(worlds)
+		// Consume tree-scroll wheel input BEFORE TickFrame runs the
+		// pan-orbit camera; otherwise both systems read the same
+		// Wheel value and the camera also zooms.
+		updateTreeScroll(worlds)
 
 		app.TickFrame(worlds, demo, delta)
+		handleRightClick(worlds)
+		driveTextInputs(worlds)
 		handleUiClicks(worlds)
 		refreshModeButtons(worlds)
+		refreshMenuPopups(worlds)
+		refreshInteractiveHovers(worlds)
+		refreshEntityTree(worlds)
+		refreshInspector(worlds)
+		updateInspectorCaret(worlds)
+
+		if hud := ecs.Resource[HudHandles](worlds.Engine); hud.RequestExit {
+			glfwWindow.SetShouldClose(true)
+		}
 
 		switch err := render.RenderFrame(renderer, worlds.Engine); {
 		case err == nil:
@@ -163,6 +179,11 @@ func installInputCallbacks(glfwWindow *glfw.Window, engine *ecs.World) {
 			render.InputMarkKeyUp(input, r)
 		}
 	})
+
+	glfwWindow.SetCharCallback(func(_ *glfw.Window, char rune) {
+		input := ecs.Resource[render.Input](engine)
+		input.Chars = append(input.Chars, char)
+	})
 }
 
 // glfwKeyRune maps a subset of GLFW key codes to the uppercase ASCII
@@ -175,6 +196,14 @@ func glfwKeyRune(key glfw.Key) (rune, bool) {
 		return ' ', true
 	case key >= glfw.Key0 && key <= glfw.Key9:
 		return rune(key), true
+	case key == glfw.KeyBackspace:
+		return '\b', true
+	case key == glfw.KeyEnter:
+		return '\n', true
+	case key == glfw.KeyLeft:
+		return '\x01', true
+	case key == glfw.KeyRight:
+		return '\x02', true
 	}
 	return 0, false
 }

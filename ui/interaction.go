@@ -14,11 +14,21 @@ import (
 // (typically from a pick-result handler) to suppress 3D selection
 // when the user clicks the HUD.
 type PointerState struct {
-	X, Y         float32
-	LeftDown     bool
-	LeftJustDown bool
-	LeftJustUp   bool
-	OverUI       bool
+	X, Y          float32
+	LeftDown      bool
+	LeftJustDown  bool
+	LeftJustUp    bool
+	RightDown     bool
+	RightJustDown bool
+	RightJustUp   bool
+	OverUI        bool
+
+	// FocusedEntity is whichever Interactive UI entity received the
+	// most recent left-press. Apps targeting keyboard input
+	// (text inputs, dropdowns with arrow-key nav) read this to
+	// decide where keystrokes should route. Cleared when the user
+	// presses on something else (including empty space).
+	FocusedEntity ecs.Entity
 
 	pressedEntity ecs.Entity
 	hasPressed    bool
@@ -40,11 +50,32 @@ func InteractionSystem(world *ecs.World) {
 
 	var hit ecs.Entity
 	hasHit := false
+	bestArea := float32(0)
 	world.ForEach(mask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
 		node, _ := ecs.Get[Node](world, entity)
-		if node.Resolved.Contains(pointer.X, pointer.Y) {
+		if !node.Resolved.Contains(pointer.X, pointer.Y) {
+			return
+		}
+		// Fully-transparent nodes are inert: apps that hide buttons
+		// via Color.RGBA[3] = 0 get "invisible = not clickable" for
+		// free, without needing to add/remove the Interactive
+		// component (which would be a structural mutation per frame).
+		if color, ok := ecs.Get[Color](world, entity); ok {
+			if color.RGBA[3] <= 0.001 {
+				return
+			}
+		}
+		// Smallest-overlapping-rect wins. This is the most-specific
+		// match: a popup item inside a popup panel reads as "the
+		// user clicked the item," not "the user clicked the panel
+		// that happens to contain the item." Without this, the
+		// panel (added later for z-order reasons) would shadow its
+		// own items.
+		area := node.Resolved.Width * node.Resolved.Height
+		if !hasHit || area < bestArea {
 			hit = entity
 			hasHit = true
+			bestArea = area
 		}
 	})
 	pointer.OverUI = hasHit
@@ -75,9 +106,14 @@ func InteractionSystem(world *ecs.World) {
 	}
 	_ = pressList
 
-	if pointer.LeftJustDown && hasHit {
-		pointer.pressedEntity = hit
-		pointer.hasPressed = true
+	if pointer.LeftJustDown {
+		if hasHit {
+			pointer.pressedEntity = hit
+			pointer.hasPressed = true
+			pointer.FocusedEntity = hit
+		} else {
+			pointer.FocusedEntity = ecs.Entity{}
+		}
 	}
 	if pointer.LeftJustUp {
 		if pointer.hasPressed && hasHit && pointer.pressedEntity == hit {

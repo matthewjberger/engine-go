@@ -37,6 +37,46 @@ type uiQuadPassState struct {
 	capacity        uint32
 	count           uint32
 	scratch         []uiQuadInstance
+	scratchZ        []int32
+}
+
+func visibleInClip(node *ui.Node) bool {
+	if node.Clip.Width <= 0 || node.Clip.Height <= 0 {
+		return true
+	}
+	r := node.Resolved
+	c := node.Clip
+	return r.X+r.Width > c.X && r.X < c.X+c.Width &&
+		r.Y+r.Height > c.Y && r.Y < c.Y+c.Height
+}
+
+func sortInstancesByZ(instances []uiQuadInstance, z []int32) {
+	if len(instances) != len(z) || len(instances) < 2 {
+		return
+	}
+	indexed := make([]int, len(instances))
+	for i := range indexed {
+		indexed[i] = i
+	}
+	sortStableByZ(indexed, z)
+	tmpInst := make([]uiQuadInstance, len(instances))
+	tmpZ := make([]int32, len(z))
+	for newPos, oldPos := range indexed {
+		tmpInst[newPos] = instances[oldPos]
+		tmpZ[newPos] = z[oldPos]
+	}
+	copy(instances, tmpInst)
+	copy(z, tmpZ)
+}
+
+func sortStableByZ(indices []int, z []int32) {
+	for i := 1; i < len(indices); i++ {
+		j := i
+		for j > 0 && z[indices[j-1]] > z[indices[j]] {
+			indices[j-1], indices[j] = indices[j], indices[j-1]
+			j--
+		}
+	}
 }
 
 // NewUiQuadPass builds the screen-space colored-rectangle pass. Each
@@ -159,12 +199,16 @@ func uiQuadPrepare(s any, context *PassContext) error {
 	uiWorld := ecs.Resource[ui.WorldRef](context.World).World
 
 	state.scratch = state.scratch[:0]
+	state.scratchZ = state.scratchZ[:0]
 	nodeColorMask := ecs.MaskOf[ui.Node](uiWorld) | ecs.MaskOf[ui.Color](uiWorld)
 	interactiveMask := ecs.MaskOf[ui.Interactive](uiWorld)
 	uiWorld.ForEach(nodeColorMask, 0, func(entity ecs.Entity, table *ecs.Archetype, index int) {
 		nodes, _ := ecs.Column[ui.Node](uiWorld, table)
 		colors, _ := ecs.Column[ui.Color](uiWorld, table)
 		node := &nodes[index]
+		if !visibleInClip(node) {
+			return
+		}
 		color := colors[index].RGBA
 		if uiWorld.HasComponents(entity, interactiveMask) {
 			interactive, _ := ecs.Get[ui.Interactive](uiWorld, entity)
@@ -178,8 +222,10 @@ func uiQuadPrepare(s any, context *PassContext) error {
 			Rect:  [4]float32{node.Resolved.X, node.Resolved.Y, node.Resolved.Width, node.Resolved.Height},
 			Color: color,
 		})
+		state.scratchZ = append(state.scratchZ, node.ZIndex)
 	})
 
+	sortInstancesByZ(state.scratch, state.scratchZ)
 	state.count = uint32(len(state.scratch))
 	if state.count == 0 {
 		return nil
