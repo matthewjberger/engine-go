@@ -42,7 +42,8 @@ type meshPassState struct {
 	globalBindGroup *wgpu.BindGroup
 	iblBindGroup    *wgpu.BindGroup
 
-	clusters *clusterResources
+	clusters      *clusterResources
+	buildIndirect *buildIndirectPipeline
 
 	perHandle     map[asset.MeshHandle]*handleInstances
 	entityHandle  map[ecs.Entity]asset.MeshHandle
@@ -136,6 +137,12 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 		return nil, err
 	}
 	state.pipeline = pipeline
+
+	buildIndirect, err := newBuildIndirectPipeline(device)
+	if err != nil {
+		return nil, err
+	}
+	state.buildIndirect = buildIndirect
 
 	return &render.Pass{
 		Name:    "mesh",

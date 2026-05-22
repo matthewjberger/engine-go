@@ -26,12 +26,14 @@ import (
 // instance_count from a future GPU-culling compute pass becomes a
 // one-line swap.
 type handleInstances struct {
-	modelBuffer         *wgpu.Buffer
-	materialIndexBuffer *wgpu.Buffer
-	entityIdBuffer      *wgpu.Buffer
-	indirectBuffer      *wgpu.Buffer
-	bindGroup           *wgpu.BindGroup
-	capacity            uint32
+	modelBuffer            *wgpu.Buffer
+	materialIndexBuffer    *wgpu.Buffer
+	entityIdBuffer         *wgpu.Buffer
+	indirectBuffer         *wgpu.Buffer
+	buildIndirectParams    *wgpu.Buffer
+	buildIndirectBindGroup *wgpu.BindGroup
+	bindGroup              *wgpu.BindGroup
+	capacity               uint32
 
 	entityToSlot map[ecs.Entity]uint32
 	slotEntity   []ecs.Entity
@@ -57,6 +59,14 @@ func releaseHandleInstances(h *handleInstances) {
 	if h.indirectBuffer != nil {
 		h.indirectBuffer.Release()
 		h.indirectBuffer = nil
+	}
+	if h.buildIndirectBindGroup != nil {
+		h.buildIndirectBindGroup.Release()
+		h.buildIndirectBindGroup = nil
+	}
+	if h.buildIndirectParams != nil {
+		h.buildIndirectParams.Release()
+		h.buildIndirectParams = nil
 	}
 }
 

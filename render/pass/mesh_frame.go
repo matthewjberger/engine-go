@@ -1,6 +1,7 @@
 package pass
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"unsafe"
@@ -151,13 +152,69 @@ func meshPrepare(s any, context *render.PassContext) error {
 		if !ok {
 			continue
 		}
-		command := drawIndirectCommand{
+		if err := ensureBuildIndirectBindings(bucket, context.Device, state.buildIndirect); err != nil {
+			return err
+		}
+		params := buildIndirectParams{
 			VertexCount:   entry.VertexCount,
 			InstanceCount: uint32(len(bucket.slotEntity)),
 		}
-		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.indirectBuffer, 0, bytesOf(&command))
+		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.buildIndirectParams, 0, bytesOf(&params))
 	}
 
+	if len(state.sortedHandles) > 0 {
+		computePass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
+		computePass.SetPipeline(state.buildIndirect.pipeline)
+		for _, handle := range state.sortedHandles {
+			bucket := state.perHandle[handle]
+			if bucket.buildIndirectBindGroup == nil {
+				continue
+			}
+			computePass.SetBindGroup(0, bucket.buildIndirectBindGroup, nil)
+			computePass.DispatchWorkgroups(1, 1, 1)
+		}
+		computePass.End()
+		computePass.Release()
+	}
+
+	return nil
+}
+
+// ensureBuildIndirectBindings lazily creates the per-handle uniform
+// + bind group that drive the build_indirect compute. Both depend
+// on bucket.indirectBuffer, so they're built after the first
+// ensureHandleCapacity call and re-built if the indirect buffer
+// changes (which it doesn't today, but the check is here for
+// future growth).
+func ensureBuildIndirectBindings(bucket *handleInstances, device *wgpu.Device, builder *buildIndirectPipeline) error {
+	if bucket.indirectBuffer == nil || builder == nil {
+		return nil
+	}
+	if bucket.buildIndirectParams == nil {
+		params, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+			Label: "mesh build_indirect params",
+			Size:  buildIndirectParamsSize,
+			Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
+		})
+		if err != nil {
+			return fmt.Errorf("mesh pass: build_indirect params: %w", err)
+		}
+		bucket.buildIndirectParams = params
+	}
+	if bucket.buildIndirectBindGroup == nil {
+		bg, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
+			Label:  "mesh build_indirect bind group",
+			Layout: builder.bindGroupLayout,
+			Entries: []wgpu.BindGroupEntry{
+				{Binding: 0, Buffer: bucket.buildIndirectParams, Offset: 0, Size: buildIndirectParamsSize},
+				{Binding: 1, Buffer: bucket.indirectBuffer, Offset: 0, Size: drawIndirectCommandSize},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("mesh pass: build_indirect bind group: %w", err)
+		}
+		bucket.buildIndirectBindGroup = bg
+	}
 	return nil
 }
 
@@ -233,6 +290,9 @@ func meshRelease(s any) {
 	}
 	if state.clusters != nil {
 		state.clusters.release()
+	}
+	if state.buildIndirect != nil {
+		state.buildIndirect.release()
 	}
 	if state.viewProjBindGroup != nil {
 		state.viewProjBindGroup.Release()
