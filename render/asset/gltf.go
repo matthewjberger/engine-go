@@ -249,11 +249,21 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene) []ecs.Entity {
 		entities[i] = world.Spawn(transformMask)
 		ecs.Set(world, entities[i], transform.IdentityGlobalTransform())
 	}
+	// Synthesize an asset-wrapper entity above every glTF top-level
+	// node so the whole loaded asset selects as a single cluster
+	// even when the glTF has multiple sibling root nodes (Flight
+	// Helmet, BoomBox, ABeautifulGame all do). The wrapper carries
+	// GroupRoot + an identity transform; the scene's original roots
+	// reparent to it.
+	assetRoot := world.Spawn(transformMask | parentMask | groupRootMask)
+	ecs.Set(world, assetRoot, transform.IdentityLocalTransform())
+	ecs.Set(world, assetRoot, transform.IdentityGlobalTransform())
+	ecs.Set(world, assetRoot, transform.Parent{IsRoot: true})
+	ecs.Set(world, assetRoot, transform.GroupRoot{})
 	for _, rootIdx := range scene.Roots {
 		if rootIdx >= 0 && rootIdx < len(entities) {
-			world.AddComponents(entities[rootIdx], parentMask|groupRootMask)
-			ecs.Set(world, entities[rootIdx], transform.Parent{IsRoot: true})
-			ecs.Set(world, entities[rootIdx], transform.GroupRoot{})
+			world.AddComponents(entities[rootIdx], parentMask)
+			ecs.Set(world, entities[rootIdx], transform.Parent{Entity: assetRoot})
 		}
 	}
 	for i, node := range scene.Nodes {
