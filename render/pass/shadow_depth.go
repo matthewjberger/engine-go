@@ -60,6 +60,7 @@ type shadowCascadeUniform struct {
 type shadowMeshUniform struct {
 	LightViewProjections [NumShadowCascades]mgl32.Mat4
 	CascadeSplits        mgl32.Vec4
+	LightDirection       mgl32.Vec4
 }
 
 type shadowDepthPassState struct {
@@ -379,6 +380,7 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 		writeBuffer(context.Device, context.Queue, context.Encoder, shadow.CascadeVPs[index], 0, bytesOf(&cascadeUniform))
 	}
 	meshUniform.CascadeSplits = mgl32.Vec4{splits[0], splits[1], splits[2], splits[3]}
+	meshUniform.LightDirection = mgl32.Vec4{lightDir.X(), lightDir.Y(), lightDir.Z(), 0}
 	writeBuffer(context.Device, context.Queue, context.Encoder, shadow.UniformBuffer, 0, bytesOf(&meshUniform))
 	return nil
 }
@@ -458,7 +460,14 @@ func fitLightFrustum(corners [8]mgl32.Vec3, lightDir mgl32.Vec3) mgl32.Mat4 {
 	maxX += pad
 	minY -= pad
 	maxY += pad
-	zPad := float32(50.0)
+	extent := maxX - minX
+	if (maxY - minY) > extent {
+		extent = maxY - minY
+	}
+	zPad := extent * 0.5
+	if zPad < 10.0 {
+		zPad = 10.0
+	}
 	minZ -= zPad
 	maxZ += zPad
 	lightProj := orthoZO(minX, maxX, minY, maxY, -maxZ, -minZ)
