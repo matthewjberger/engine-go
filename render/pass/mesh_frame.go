@@ -294,6 +294,7 @@ func meshRelease(s any) {
 	if state.buildIndirect != nil {
 		state.buildIndirect.release()
 	}
+	sharedMeshPassState.Store((*meshPassState)(nil))
 	if state.viewProjBindGroup != nil {
 		state.viewProjBindGroup.Release()
 	}

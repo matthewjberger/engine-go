@@ -89,6 +89,9 @@ struct Material {
 @group(1) @binding(6) var material_linear_array: texture_2d_array<f32>;
 @group(1) @binding(7) var material_sampler:      sampler;
 @group(1) @binding(8) var<storage, read> materials: array<Material>;
+@group(1) @binding(9) var<uniform>       light_view_proj: mat4x4<f32>;
+@group(1) @binding(10) var shadow_map:           texture_depth_2d;
+@group(1) @binding(11) var shadow_sampler:       sampler_comparison;
 
 @group(2) @binding(0) var<storage, read> models:           array<mat4x4<f32>>;
 @group(2) @binding(1) var<storage, read> material_indices: array<u32>;
@@ -238,6 +241,35 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
 fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
     let invR = vec3<f32>(1.0 - roughness);
     return f0 + (max(invR, f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+// sample_directional_shadow projects the fragment's world position
+// into the directional light's clip space, normalizes to UV +
+// depth, and runs a 3x3 PCF compare against the shadow map.
+// Returns 1.0 (fully lit) when outside the shadow map's coverage
+// so geometry beyond the shadow frustum doesn't darken.
+fn sample_directional_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>) -> f32 {
+    let bias_offset = world_normal * 0.05;
+    let shadow_clip = light_view_proj * vec4<f32>(world_pos + bias_offset, 1.0);
+    let shadow_ndc = shadow_clip.xyz / shadow_clip.w;
+    let shadow_uv = vec2<f32>(shadow_ndc.x * 0.5 + 0.5, -shadow_ndc.y * 0.5 + 0.5);
+    if (shadow_uv.x < 0.0 || shadow_uv.x > 1.0 || shadow_uv.y < 0.0 || shadow_uv.y > 1.0) {
+        return 1.0;
+    }
+    if (shadow_ndc.z < 0.0 || shadow_ndc.z > 1.0) {
+        return 1.0;
+    }
+    let bias: f32 = 0.001;
+    let depth = shadow_ndc.z - bias;
+    let texel = 1.0 / 2048.0;
+    var sum: f32 = 0.0;
+    for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
+        for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
+            let offset = vec2<f32>(f32(dx) * texel, f32(dy) * texel);
+            sum = sum + textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + offset, depth);
+        }
+    }
+    return sum / 9.0;
 }
 
 fn range_attenuation(range: f32, distance: f32) -> f32 {
@@ -422,12 +454,21 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
 
     var lo = vec3<f32>(0.0);
 
+    let shadow_factor = sample_directional_shadow(in.world_pos, n);
+
     // Iterate every directional light unconditionally; they have no
-    // bounding volume and affect every cluster.
+    // bounding volume and affect every cluster. The first
+    // directional light receives the shadow-map attenuation
+    // computed from the shadow_depth pass; additional directional
+    // lights (rim, fill) stay unshadowed for now.
     for (var i = 0u; i < cluster_uniforms.num_directional_lights; i = i + 1u) {
         let light = lights[i];
         let point_to_light = -light.direction.xyz;
-        lo = lo + shade_one_light(light, point_to_light, v, n, albedo, f0, metallic, roughness);
+        var contribution = shade_one_light(light, point_to_light, v, n, albedo, f0, metallic, roughness);
+        if (i == 0u) {
+            contribution = contribution * shadow_factor;
+        }
+        lo = lo + contribution;
     }
 
     // Iterate only the local lights that touch this fragment's

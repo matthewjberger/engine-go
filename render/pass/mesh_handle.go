@@ -33,6 +33,7 @@ type handleInstances struct {
 	buildIndirectParams    *wgpu.Buffer
 	buildIndirectBindGroup *wgpu.BindGroup
 	bindGroup              *wgpu.BindGroup
+	shadowBindGroup        *wgpu.BindGroup
 	capacity               uint32
 
 	entityToSlot map[ecs.Entity]uint32
@@ -67,6 +68,10 @@ func releaseHandleInstances(h *handleInstances) {
 	if h.buildIndirectParams != nil {
 		h.buildIndirectParams.Release()
 		h.buildIndirectParams = nil
+	}
+	if h.shadowBindGroup != nil {
+		h.shadowBindGroup.Release()
+		h.shadowBindGroup = nil
 	}
 }
 
@@ -165,6 +170,10 @@ func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.
 	}
 	if h.entityIdBuffer != nil {
 		h.entityIdBuffer.Release()
+	}
+	if h.shadowBindGroup != nil {
+		h.shadowBindGroup.Release()
+		h.shadowBindGroup = nil
 	}
 	h.modelBuffer = modelBuffer
 	h.materialIndexBuffer = materialIndexBuffer

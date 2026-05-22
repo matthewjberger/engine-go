@@ -130,7 +130,11 @@ func breakoutApp() *app.App {
 			arrays := ecs.MustResource[asset.MaterialTextureArraysResource](world).Arrays
 			registry := ecs.MustResource[asset.MaterialRegistryResource](world).Registry
 			ibl := ecs.MustResource[pass.IBLResource](world).IBL
-			if _, err := pass.AddMeshPass(renderer, arrays, registry, ibl); err != nil {
+			shadow := ecs.MustResource[pass.ShadowResource](world).Shadow
+			if _, err := pass.AddShadowDepthPass(renderer, shadow); err != nil {
+				log.Fatal(err)
+			}
+			if _, err := pass.AddMeshPass(renderer, arrays, registry, ibl, shadow); err != nil {
 				log.Fatal(err)
 			}
 			if _, err := pass.AddPostProcessPass(renderer); err != nil {

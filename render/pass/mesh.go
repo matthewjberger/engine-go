@@ -2,6 +2,7 @@ package pass
 
 import (
 	_ "embed"
+	"sync/atomic"
 
 	"github.com/cogentcore/webgpu/wgpu"
 
@@ -12,6 +13,12 @@ import (
 
 //go:embed mesh.wgsl
 var meshShader string
+
+// sharedMeshPassState exposes the mesh pass's per-handle bookkeeping
+// to sibling passes (shadow_depth today) that draw the same
+// geometry without duplicating the per-entity slot tracking.
+// Lifetime: stays valid from NewMeshPass through meshRelease.
+var sharedMeshPassState atomic.Value
 
 // meshPassState is the long-lived state the mesh pass keeps.
 //
@@ -71,7 +78,7 @@ type meshPassState struct {
 // code: bind-group layouts + buffers + pipeline live in
 // [mesh_layouts.go], per-handle bookkeeping in [mesh_handle.go],
 // per-frame work in [mesh_frame.go].
-func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32, arrays *asset.MaterialTextureArrays, registry *asset.MaterialRegistry, ibl *IBL) (*render.Pass, error) {
+func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32, arrays *asset.MaterialTextureArrays, registry *asset.MaterialRegistry, ibl *IBL, shadow *Shadow) (*render.Pass, error) {
 	state := &meshPassState{
 		perHandle:    make(map[asset.MeshHandle]*handleInstances, 4),
 		entityHandle: make(map[ecs.Entity]asset.MeshHandle, 64),
@@ -126,7 +133,7 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 	}
 	state.clusters = clusters
 
-	globalBindGroup, err := createGlobalBindGroup(device, globalBgLayout, clusters, arrays, registry)
+	globalBindGroup, err := createGlobalBindGroup(device, globalBgLayout, clusters, arrays, registry, shadow, shadow.LightVPBuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +150,8 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 		return nil, err
 	}
 	state.buildIndirect = buildIndirect
+
+	sharedMeshPassState.Store(state)
 
 	return &render.Pass{
 		Name:    "mesh",

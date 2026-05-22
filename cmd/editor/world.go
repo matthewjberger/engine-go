@@ -61,6 +61,7 @@ func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshN
 	ecs.Set(worlds.Engine, sun, app.Name{Value: "Sun"})
 
 	spawnLightOrbs(worlds, orbMesh)
+	spawnGroundPlane(worlds)
 
 	engineMask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
@@ -128,6 +129,31 @@ func advanceSpinners(game *ecs.World) {
 
 		app.SyncEngineRotation(engineRef.World, links[index], s.Rotation)
 	})
+}
+
+// spawnGroundPlane spawns a flat 40x40 quad lying on the XZ plane
+// at y=-0.5 so cast shadows have a surface to land on. Matte
+// light-gray material; no special components beyond the standard
+// renderable bundle.
+func spawnGroundPlane(worlds app.Worlds) {
+	engine := worlds.Engine
+	primitives := ecs.MustResource[asset.Primitives](engine)
+	groundMask := ecs.MustMaskOf[transform.LocalTransform](engine) |
+		ecs.MustMaskOf[transform.GlobalTransform](engine) |
+		ecs.MustMaskOf[transform.LocalTransformDirty](engine) |
+		ecs.MustMaskOf[asset.RenderMesh](engine) |
+		ecs.MustMaskOf[asset.Material](engine) |
+		ecs.MustMaskOf[app.Name](engine)
+	ground := engine.Spawn(groundMask)
+	local := transform.IdentityLocalTransform()
+	local.Translation = transform.Vec3{0, -0.5, 0}
+	local.Rotation = transform.QuatFromAxisAngle(-float32(math.Pi/2), transform.Vec3{1, 0, 0})
+	local.Scale = transform.Vec3{40, 40, 1}
+	ecs.Set(engine, ground, local)
+	ecs.Set(engine, ground, transform.IdentityGlobalTransform())
+	ecs.Set(engine, ground, asset.RenderMesh{Mesh: primitives.UnitQuad})
+	ecs.Set(engine, ground, asset.AlbedoMaterial([4]float32{0.55, 0.55, 0.58, 1.0}))
+	ecs.Set(engine, ground, app.Name{Value: "Ground"})
 }
 
 // spawnLightOrbs scatters a handful of colored point lights and a
