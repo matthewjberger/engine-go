@@ -272,6 +272,12 @@ func uiTextPrepare(s any, context *render.PassContext) error {
 				cursor += advance
 				continue
 			}
+			centerX := cursor + glyphW*0.5
+			centerY := originY + glyphH*0.5
+			if pointCovered(centerX, centerY, node.ZIndex, occluders) {
+				cursor += advance
+				continue
+			}
 			atlasX := float32(column) * cellW
 			state.scratch = append(state.scratch, uiTextGlyphInstance{
 				Rect:  [4]float32{cursor, originY, glyphW, glyphH},
@@ -374,6 +380,26 @@ func textCovered(textBounds ui.Rect, textZ int32, occluders []opaqueQuad) bool {
 			continue
 		}
 		if rectContains(q.rect, textBounds) {
+			return true
+		}
+	}
+	return false
+}
+
+// pointCovered reports whether the (x, y) glyph-center point is
+// inside any opaque higher-z quad. Used by the per-glyph text
+// emission loop so individual letters inside a popup get skipped
+// while the rest of the label (poking out to the side) still
+// renders. This handles partial overlap correctly without dropping
+// the whole label.
+func pointCovered(x, y float32, textZ int32, occluders []opaqueQuad) bool {
+	for i := range occluders {
+		q := &occluders[i]
+		if q.z <= textZ {
+			continue
+		}
+		if x >= q.rect.X && x <= q.rect.X+q.rect.Width &&
+			y >= q.rect.Y && y <= q.rect.Y+q.rect.Height {
 			return true
 		}
 	}
