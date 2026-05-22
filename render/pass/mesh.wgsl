@@ -89,8 +89,14 @@ struct Material {
 @group(1) @binding(6) var material_linear_array: texture_2d_array<f32>;
 @group(1) @binding(7) var material_sampler:      sampler;
 @group(1) @binding(8) var<storage, read> materials: array<Material>;
-@group(1) @binding(9) var<uniform>       light_view_proj: mat4x4<f32>;
-@group(1) @binding(10) var shadow_map:           texture_depth_2d;
+
+struct ShadowUniforms {
+    cascade_view_projections: array<mat4x4<f32>, 4>,
+    cascade_splits: vec4<f32>,
+};
+
+@group(1) @binding(9) var<uniform>       shadow_uniforms: ShadowUniforms;
+@group(1) @binding(10) var shadow_map:           texture_depth_2d_array;
 @group(1) @binding(11) var shadow_sampler:       sampler_comparison;
 
 @group(2) @binding(0) var<storage, read> models:           array<mat4x4<f32>>;
@@ -248,9 +254,18 @@ fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> v
 // depth, and runs a 3x3 PCF compare against the shadow map.
 // Returns 1.0 (fully lit) when outside the shadow map's coverage
 // so geometry beyond the shadow frustum doesn't darken.
-fn sample_directional_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>) -> f32 {
+fn select_cascade(view_depth: f32) -> i32 {
+    for (var cascade: i32 = 0; cascade < 4; cascade = cascade + 1) {
+        if view_depth < shadow_uniforms.cascade_splits[cascade] {
+            return cascade;
+        }
+    }
+    return 3;
+}
+
+fn sample_cascade(world_pos: vec3<f32>, world_normal: vec3<f32>, cascade: i32) -> f32 {
     let bias_offset = world_normal * 0.05;
-    let shadow_clip = light_view_proj * vec4<f32>(world_pos + bias_offset, 1.0);
+    let shadow_clip = shadow_uniforms.cascade_view_projections[cascade] * vec4<f32>(world_pos + bias_offset, 1.0);
     let shadow_ndc = shadow_clip.xyz / shadow_clip.w;
     let shadow_uv = vec2<f32>(shadow_ndc.x * 0.5 + 0.5, -shadow_ndc.y * 0.5 + 0.5);
     if (shadow_uv.x < 0.0 || shadow_uv.x > 1.0 || shadow_uv.y < 0.0 || shadow_uv.y > 1.0) {
@@ -261,15 +276,33 @@ fn sample_directional_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>) -> f
     }
     let bias: f32 = 0.0005;
     let depth = shadow_ndc.z - bias;
-    let texel = 1.0 / 4096.0;
+    let texel = 1.0 / 2048.0;
     var sum: f32 = 0.0;
     for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
         for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
             let offset = vec2<f32>(f32(dx) * texel, f32(dy) * texel);
-            sum = sum + textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + offset, depth);
+            sum = sum + textureSampleCompareLevel(shadow_map, shadow_sampler, shadow_uv + offset, cascade, depth);
         }
     }
     return sum / 9.0;
+}
+
+fn sample_directional_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>) -> f32 {
+    let view_pos = view_matrix * vec4<f32>(world_pos, 1.0);
+    let view_depth = -view_pos.z;
+    let cascade = select_cascade(view_depth);
+    let factor = sample_cascade(world_pos, world_normal, cascade);
+    if (cascade < 3) {
+        let cascade_end = shadow_uniforms.cascade_splits[cascade];
+        let blend_range = cascade_end * 0.15;
+        let blend_start = cascade_end - blend_range;
+        if (view_depth > blend_start) {
+            let next = sample_cascade(world_pos, world_normal, cascade + 1);
+            let t = clamp((view_depth - blend_start) / blend_range, 0.0, 1.0);
+            return mix(factor, next, t);
+        }
+    }
+    return factor;
 }
 
 fn range_attenuation(range: f32, distance: f32) -> f32 {

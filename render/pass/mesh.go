@@ -133,7 +133,7 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 	}
 	state.clusters = clusters
 
-	globalBindGroup, err := createGlobalBindGroup(device, globalBgLayout, clusters, arrays, registry, shadow, shadow.LightVPBuffer)
+	globalBindGroup, err := createGlobalBindGroup(device, globalBgLayout, clusters, arrays, registry, shadow, shadow.UniformBuffer)
 	if err != nil {
 		return nil, err
 	}

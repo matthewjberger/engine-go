@@ -19,23 +19,33 @@ import (
 //go:embed shadow_depth.wgsl
 var shadowDepthShader string
 
-// ShadowMapSize is the side length of the directional shadow map.
-// 2048 trades VRAM for sharper edges at typical scene distances.
-const ShadowMapSize uint32 = 4096
+// ShadowMapSize is the per-cascade side length of the directional
+// shadow map. 2048 per cascade x 4 cascades = decent close shadow
+// fidelity without 4096-per-cascade VRAM cost.
+const ShadowMapSize uint32 = 2048
 
 // ShadowMapFormat is depth32float to match the engine's main depth.
 const ShadowMapFormat = wgpu.TextureFormatDepth32Float
 
-// Shadow owns the GPU-side directional shadow map: a depth texture
-// the mesh pass samples + the light view-projection used to render
-// it. One light slot today (the first directional light); cascades
-// + multi-light atlases follow the same shape.
+// NumShadowCascades is the count of cascaded shadow map levels.
+const NumShadowCascades = 4
+
+// CascadeSplitDistances are the camera-space far-z values that
+// partition the camera frustum into per-cascade sub-frustums.
+// Matches the reference engine's defaults.
+var CascadeSplitDistances = [NumShadowCascades]float32{10.0, 40.0, 150.0, 500.0}
+
+// Shadow owns the GPU-side cascaded directional shadow map: a
+// 2D-array depth texture (one layer per cascade) + the four
+// per-cascade light view-projections the mesh pass samples.
 type Shadow struct {
 	Texture       *wgpu.Texture
-	View          *wgpu.TextureView
+	ArrayView     *wgpu.TextureView
+	CascadeViews  [NumShadowCascades]*wgpu.TextureView
 	Sampler       *wgpu.Sampler
-	LightVPBuffer *wgpu.Buffer
-	LightViewVP   mgl32.Mat4
+	CascadeVPs    [NumShadowCascades]*wgpu.Buffer
+	UniformBuffer *wgpu.Buffer
+	LightViewVPs  [NumShadowCascades]mgl32.Mat4
 }
 
 // ShadowResource wraps Shadow as an engine-world resource.
@@ -43,27 +53,34 @@ type ShadowResource struct {
 	Shadow *Shadow
 }
 
-type shadowUniform struct {
+type shadowCascadeUniform struct {
 	LightViewProj mgl32.Mat4
+}
+
+type shadowMeshUniform struct {
+	LightViewProjections [NumShadowCascades]mgl32.Mat4
+	CascadeSplits        mgl32.Vec4
 }
 
 type shadowDepthPassState struct {
 	pipeline       *wgpu.RenderPipeline
 	viewProjLayout *wgpu.BindGroupLayout
 	handleBgLayout *wgpu.BindGroupLayout
-	viewProjBg     *wgpu.BindGroup
+	cascadeBgs     [NumShadowCascades]*wgpu.BindGroup
 }
 
-// NewShadow allocates the depth texture + sampler + view. Stored
-// as an engine-world resource so the mesh pass can fetch it for
-// the lit fragment computation.
+// NewShadow allocates the cascade depth texture (2D array, one
+// layer per cascade) + per-cascade attachment views + a single
+// 2D-array view the mesh pass binds for sampling + four per-cascade
+// uniform buffers + the mesh-pass cascade-aware uniform.
 func NewShadow(device *wgpu.Device) (*Shadow, error) {
+	shadow := &Shadow{}
 	tex, err := device.CreateTexture(&wgpu.TextureDescriptor{
-		Label: "shadow depth",
+		Label: "shadow cascades",
 		Size: wgpu.Extent3D{
 			Width:              ShadowMapSize,
 			Height:             ShadowMapSize,
-			DepthOrArrayLayers: 1,
+			DepthOrArrayLayers: NumShadowCascades,
 		},
 		MipLevelCount: 1,
 		SampleCount:   1,
@@ -72,13 +89,42 @@ func NewShadow(device *wgpu.Device) (*Shadow, error) {
 		Usage:         wgpu.TextureUsageRenderAttachment | wgpu.TextureUsageTextureBinding,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("shadow: depth texture: %w", err)
+		return nil, fmt.Errorf("shadow: cascade texture: %w", err)
 	}
-	view, err := tex.CreateView(nil)
+	shadow.Texture = tex
+
+	arrayView, err := tex.CreateView(&wgpu.TextureViewDescriptor{
+		Label:           "shadow cascade array view",
+		Dimension:       wgpu.TextureViewDimension2DArray,
+		BaseMipLevel:    0,
+		MipLevelCount:   1,
+		BaseArrayLayer:  0,
+		ArrayLayerCount: NumShadowCascades,
+		Aspect:          wgpu.TextureAspectAll,
+	})
 	if err != nil {
-		tex.Release()
-		return nil, fmt.Errorf("shadow: depth view: %w", err)
+		shadow.Release()
+		return nil, fmt.Errorf("shadow: array view: %w", err)
 	}
+	shadow.ArrayView = arrayView
+
+	for index := 0; index < NumShadowCascades; index++ {
+		view, err := tex.CreateView(&wgpu.TextureViewDescriptor{
+			Label:           "shadow cascade slice",
+			Dimension:       wgpu.TextureViewDimension2D,
+			BaseMipLevel:    0,
+			MipLevelCount:   1,
+			BaseArrayLayer:  uint32(index),
+			ArrayLayerCount: 1,
+			Aspect:          wgpu.TextureAspectAll,
+		})
+		if err != nil {
+			shadow.Release()
+			return nil, fmt.Errorf("shadow: cascade %d view: %w", index, err)
+		}
+		shadow.CascadeViews[index] = view
+	}
+
 	sampler, err := device.CreateSampler(&wgpu.SamplerDescriptor{
 		Label:         "shadow sampler",
 		AddressModeU:  wgpu.AddressModeClampToEdge,
@@ -91,43 +137,68 @@ func NewShadow(device *wgpu.Device) (*Shadow, error) {
 		Compare:       wgpu.CompareFunctionLessEqual,
 	})
 	if err != nil {
-		tex.Release()
-		view.Release()
+		shadow.Release()
 		return nil, fmt.Errorf("shadow: sampler: %w", err)
 	}
-	uniformBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
-		Label: "shadow light_vp uniform",
-		Size:  uint64(unsafe.Sizeof(shadowUniform{})),
+	shadow.Sampler = sampler
+
+	for index := 0; index < NumShadowCascades; index++ {
+		buffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+			Label: "shadow cascade light_vp",
+			Size:  uint64(unsafe.Sizeof(shadowCascadeUniform{})),
+			Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
+		})
+		if err != nil {
+			shadow.Release()
+			return nil, fmt.Errorf("shadow: cascade %d uniform: %w", index, err)
+		}
+		shadow.CascadeVPs[index] = buffer
+		shadow.LightViewVPs[index] = mgl32.Ident4()
+	}
+
+	meshUniform, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+		Label: "shadow mesh uniform",
+		Size:  uint64(unsafe.Sizeof(shadowMeshUniform{})),
 		Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
 	})
 	if err != nil {
-		tex.Release()
-		view.Release()
-		sampler.Release()
-		return nil, fmt.Errorf("shadow: uniform buffer: %w", err)
+		shadow.Release()
+		return nil, fmt.Errorf("shadow: mesh uniform: %w", err)
 	}
-	return &Shadow{
-		Texture:       tex,
-		View:          view,
-		Sampler:       sampler,
-		LightVPBuffer: uniformBuffer,
-		LightViewVP:   mgl32.Ident4(),
-	}, nil
+	shadow.UniformBuffer = meshUniform
+
+	return shadow, nil
 }
 
 // Release frees the shadow map's GPU resources.
 func (s *Shadow) Release() {
-	if s.LightVPBuffer != nil {
-		s.LightVPBuffer.Release()
+	if s.UniformBuffer != nil {
+		s.UniformBuffer.Release()
+		s.UniformBuffer = nil
+	}
+	for index := range s.CascadeVPs {
+		if s.CascadeVPs[index] != nil {
+			s.CascadeVPs[index].Release()
+			s.CascadeVPs[index] = nil
+		}
 	}
 	if s.Sampler != nil {
 		s.Sampler.Release()
+		s.Sampler = nil
 	}
-	if s.View != nil {
-		s.View.Release()
+	for index := range s.CascadeViews {
+		if s.CascadeViews[index] != nil {
+			s.CascadeViews[index].Release()
+			s.CascadeViews[index] = nil
+		}
+	}
+	if s.ArrayView != nil {
+		s.ArrayView.Release()
+		s.ArrayView = nil
 	}
 	if s.Texture != nil {
 		s.Texture.Release()
+		s.Texture = nil
 	}
 }
 
@@ -165,17 +236,19 @@ func NewShadowDepthPass(device *wgpu.Device, shadow *Shadow) (*render.Pass, erro
 	}
 	state.handleBgLayout = handleBgLayout
 
-	viewProjBg, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "shadow view_proj bind group",
-		Layout: viewProjLayout,
-		Entries: []wgpu.BindGroupEntry{
-			{Binding: 0, Buffer: shadow.LightVPBuffer, Offset: 0, Size: uint64(unsafe.Sizeof(shadowUniform{}))},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("shadow_depth: view_proj bind group: %w", err)
+	for index := 0; index < NumShadowCascades; index++ {
+		bg, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
+			Label:  "shadow cascade view_proj bind group",
+			Layout: viewProjLayout,
+			Entries: []wgpu.BindGroupEntry{
+				{Binding: 0, Buffer: shadow.CascadeVPs[index], Offset: 0, Size: uint64(unsafe.Sizeof(shadowCascadeUniform{}))},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("shadow_depth: cascade %d view_proj bind group: %w", index, err)
+		}
+		state.cascadeBgs[index] = bg
 	}
-	state.viewProjBg = viewProjBg
 
 	shader, err := device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "shadow_depth shader",
@@ -251,10 +324,11 @@ func NewShadowDepthPass(device *wgpu.Device, shadow *Shadow) (*render.Pass, erro
 	}, nil
 }
 
-// shadowDepthPrepare computes the directional light's view +
-// ortho projection. The frustum encloses the active camera's
-// visible frustum corners in light space so the shadow texture
-// is sized to what the camera sees.
+// shadowDepthPrepare computes one light view-projection per
+// cascade by partitioning the camera frustum at the configured
+// split distances + fitting an ortho around each sub-frustum's
+// world-space corners. Uploads the per-cascade matrices to their
+// shadow_depth uniforms and the mesh-pass cascade uniform.
 func shadowDepthPrepare(s any, context *render.PassContext) error {
 	_ = s
 
@@ -273,19 +347,68 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 		}
 	})
 
-	camera, ok := ecs.Resource[render.Camera](context.World)
+	camera, hasCamera := ecs.Resource[render.Camera](context.World)
 	aspect := float32(1.0)
 	if resource, hasViewport := ecs.Resource[window.Window](context.World); hasViewport {
 		if resource.Viewport.Height > 0 {
 			aspect = float32(resource.Viewport.Width) / float32(resource.Viewport.Height)
 		}
 	}
-	corners := cameraFrustumCornersWorld(camera, ok, aspect)
+
+	cameraNear := float32(0.1)
+	if hasCamera && camera != nil {
+		cameraNear = camera.Near
+	}
+	splits := scaledCascadeSplits(cameraNear)
+
+	shadow := ecs.MustResource[ShadowResource](context.World).Shadow
+
+	var meshUniform shadowMeshUniform
+	for index := 0; index < NumShadowCascades; index++ {
+		cascadeNear := cameraNear
+		if index > 0 {
+			cascadeNear = splits[index-1]
+		}
+		cascadeFar := splits[index]
+		corners := cameraFrustumCornersWorldRange(camera, hasCamera, aspect, cascadeNear, cascadeFar)
+		lightVP := fitLightFrustum(corners, lightDir)
+		shadow.LightViewVPs[index] = lightVP
+		meshUniform.LightViewProjections[index] = lightVP
+
+		cascadeUniform := shadowCascadeUniform{LightViewProj: lightVP}
+		writeBuffer(context.Device, context.Queue, context.Encoder, shadow.CascadeVPs[index], 0, bytesOf(&cascadeUniform))
+	}
+	meshUniform.CascadeSplits = mgl32.Vec4{splits[0], splits[1], splits[2], splits[3]}
+	writeBuffer(context.Device, context.Queue, context.Encoder, shadow.UniformBuffer, 0, bytesOf(&meshUniform))
+	return nil
+}
+
+// scaledCascadeSplits multiplies the default cascade splits by the
+// camera's near ratio so a zoomed-in scene (smaller near) still
+// gets useful cascade boundaries.
+func scaledCascadeSplits(cameraNear float32) [NumShadowCascades]float32 {
+	const referenceNear float32 = 0.01
+	scale := cameraNear / referenceNear
+	if scale < 1.0 {
+		scale = 1.0
+	}
+	var splits [NumShadowCascades]float32
+	for index := range splits {
+		splits[index] = CascadeSplitDistances[index] * scale
+	}
+	return splits
+}
+
+// fitLightFrustum builds a light view-projection that wraps the
+// supplied world-space frustum corners. Average the corners to
+// pick the look-at target; transform to light space; ortho extents
+// come from per-axis min/max with a small pad.
+func fitLightFrustum(corners [8]mgl32.Vec3, lightDir mgl32.Vec3) mgl32.Mat4 {
 	center := mgl32.Vec3{0, 0, 0}
 	for _, corner := range corners {
 		center = center.Add(corner)
 	}
-	center = center.Mul(1.0 / float32(len(corners)))
+	center = center.Mul(1.0 / 8.0)
 	maxRadius := float32(0)
 	for _, corner := range corners {
 		d := corner.Sub(center).Len()
@@ -294,22 +417,17 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 		}
 	}
 	if maxRadius < 1.0 {
-		maxRadius = 30.0
+		maxRadius = 1.0
 	}
-
 	up := mgl32.Vec3{0, 1, 0}
 	if mgl32.Abs(lightDir.Y()) > 0.99 {
 		up = mgl32.Vec3{1, 0, 0}
 	}
 	eye := center.Sub(lightDir.Mul(maxRadius * 4.0))
 	lightView := mgl32.LookAtV(eye, center, up)
-
-	minX := float32(math.MaxFloat32)
-	maxX := float32(-math.MaxFloat32)
-	minY := minX
-	maxY := maxX
-	minZ := minX
-	maxZ := maxX
+	minX, maxX := float32(math.MaxFloat32), float32(-math.MaxFloat32)
+	minY, maxY := minX, maxX
+	minZ, maxZ := minX, maxX
 	for _, corner := range corners {
 		light4 := lightView.Mul4x1(mgl32.Vec4{corner.X(), corner.Y(), corner.Z(), 1.0})
 		if light4.X() < minX {
@@ -344,13 +462,7 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 	minZ -= zPad
 	maxZ += zPad
 	lightProj := orthoZO(minX, maxX, minY, maxY, -maxZ, -minZ)
-	lightVP := lightProj.Mul4(lightView)
-
-	shadow := ecs.MustResource[ShadowResource](context.World).Shadow
-	uniform := shadowUniform{LightViewProj: lightVP}
-	writeBuffer(context.Device, context.Queue, context.Encoder, shadow.LightVPBuffer, 0, bytesOf(&uniform))
-	shadow.LightViewVP = lightVP
-	return nil
+	return lightProj.Mul4(lightView)
 }
 
 // shadowDepthExecute draws every RenderMesh bucket the mesh pass
@@ -362,58 +474,59 @@ func shadowDepthExecute(s any, context *render.PassContext) error {
 	state := s.(*shadowDepthPassState)
 	shadow := ecs.MustResource[ShadowResource](context.World).Shadow
 
-	depthAttachment := wgpu.RenderPassDepthStencilAttachment{
-		View:              shadow.View,
-		DepthLoadOp:       wgpu.LoadOpClear,
-		DepthStoreOp:      wgpu.StoreOpStore,
-		DepthClearValue:   1.0,
-		DepthReadOnly:     false,
-		StencilLoadOp:     wgpu.LoadOpClear,
-		StencilStoreOp:    wgpu.StoreOpStore,
-		StencilClearValue: 0,
-		StencilReadOnly:   true,
-	}
-	pass := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
-		Label:                  "shadow_depth",
-		DepthStencilAttachment: &depthAttachment,
-	})
-	pass.SetPipeline(state.pipeline)
-	pass.SetBindGroup(0, state.viewProjBg, nil)
-
 	meshState, ok := findMeshPassState(context.World)
 	if !ok {
-		pass.End()
-		pass.Release()
 		return nil
 	}
 	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
 
-	for _, handle := range meshState.sortedHandles {
-		bucket := meshState.perHandle[handle]
-		entry, ok := assets.Lookup(handle)
-		if !ok {
-			continue
+	for cascade := 0; cascade < NumShadowCascades; cascade++ {
+		depthAttachment := wgpu.RenderPassDepthStencilAttachment{
+			View:              shadow.CascadeViews[cascade],
+			DepthLoadOp:       wgpu.LoadOpClear,
+			DepthStoreOp:      wgpu.StoreOpStore,
+			DepthClearValue:   1.0,
+			DepthReadOnly:     false,
+			StencilLoadOp:     wgpu.LoadOpClear,
+			StencilStoreOp:    wgpu.StoreOpStore,
+			StencilClearValue: 0,
+			StencilReadOnly:   true,
 		}
-		shadowBg, err := ensureShadowHandleBindGroup(bucket, context.Device, state.handleBgLayout)
-		if err != nil {
-			pass.End()
-			pass.Release()
-			return err
+		pass := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
+			Label:                  "shadow_depth cascade",
+			DepthStencilAttachment: &depthAttachment,
+		})
+		pass.SetPipeline(state.pipeline)
+		pass.SetBindGroup(0, state.cascadeBgs[cascade], nil)
+		for _, handle := range meshState.sortedHandles {
+			bucket := meshState.perHandle[handle]
+			entry, ok := assets.Lookup(handle)
+			if !ok {
+				continue
+			}
+			shadowBg, err := ensureShadowHandleBindGroup(bucket, context.Device, state.handleBgLayout)
+			if err != nil {
+				pass.End()
+				pass.Release()
+				return err
+			}
+			pass.SetBindGroup(1, shadowBg, nil)
+			pass.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
+			pass.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
 		}
-		pass.SetBindGroup(1, shadowBg, nil)
-		pass.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
-		pass.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
+		pass.End()
+		pass.Release()
 	}
-
-	pass.End()
-	pass.Release()
 	return nil
 }
 
 func shadowDepthRelease(s any) {
 	state := s.(*shadowDepthPassState)
-	if state.viewProjBg != nil {
-		state.viewProjBg.Release()
+	for index := range state.cascadeBgs {
+		if state.cascadeBgs[index] != nil {
+			state.cascadeBgs[index].Release()
+			state.cascadeBgs[index] = nil
+		}
 	}
 	if state.pipeline != nil {
 		state.pipeline.Release()
@@ -488,15 +601,17 @@ func orthoZO(left, right, bottom, top, near, far float32) mgl32.Mat4 {
 	}
 }
 
-// cameraFrustumCornersWorld returns the 8 world-space corners of
-// the camera's view frustum (near + far rect corners), or a
-// scene-centered fallback box when the camera resource is missing
-// or has zero extent. Used by the shadow pass to fit the
-// directional light's ortho projection around the visible scene.
-func cameraFrustumCornersWorld(camera *render.Camera, hasCamera bool, aspect float32) [8]mgl32.Vec3 {
+// cameraFrustumCornersWorldRange returns the 8 world-space corners
+// of a sub-frustum of the camera bounded by near + far distances.
+// Falls back to a scene-centered box when the camera resource is
+// missing.
+func cameraFrustumCornersWorldRange(camera *render.Camera, hasCamera bool, aspect, near, far float32) [8]mgl32.Vec3 {
 	if !hasCamera || camera == nil {
 		var fallback [8]mgl32.Vec3
-		extent := float32(30.0)
+		extent := far
+		if extent < 30.0 {
+			extent = 30.0
+		}
 		index := 0
 		for _, sx := range []float32{-1, 1} {
 			for _, sy := range []float32{-1, 1} {
@@ -509,11 +624,6 @@ func cameraFrustumCornersWorld(camera *render.Camera, hasCamera bool, aspect flo
 		return fallback
 	}
 	fov := camera.FovYRadians
-	near := camera.Near
-	far := camera.Far
-	if far > near+40.0 {
-		far = near + 40.0
-	}
 	tanHalf := float32(math.Tan(float64(fov) * 0.5))
 	nearHeight := near * tanHalf
 	nearWidth := nearHeight * aspect
