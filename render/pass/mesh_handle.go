@@ -19,10 +19,17 @@ import (
 // indices into the global material registry, and entity IDs. The
 // same slot stays with an entity for its whole lifetime so sparse
 // uploads can write to known offsets.
+//
+// indirectBuffer holds a single DrawIndirect command
+// (vertex_count, instance_count, first_vertex, first_instance) that
+// the mesh execute pass reads via pass.DrawIndirect. Writing
+// instance_count from a future GPU-culling compute pass becomes a
+// one-line swap.
 type handleInstances struct {
 	modelBuffer         *wgpu.Buffer
 	materialIndexBuffer *wgpu.Buffer
 	entityIdBuffer      *wgpu.Buffer
+	indirectBuffer      *wgpu.Buffer
 	bindGroup           *wgpu.BindGroup
 	capacity            uint32
 
@@ -47,7 +54,23 @@ func releaseHandleInstances(h *handleInstances) {
 		h.entityIdBuffer.Release()
 		h.entityIdBuffer = nil
 	}
+	if h.indirectBuffer != nil {
+		h.indirectBuffer.Release()
+		h.indirectBuffer = nil
+	}
 }
+
+// drawIndirectCommand mirrors the wgpu draw-indirect parameter
+// block: vertex_count, instance_count, first_vertex, first_instance.
+// 16 bytes, one per handle.
+type drawIndirectCommand struct {
+	VertexCount   uint32
+	InstanceCount uint32
+	FirstVertex   uint32
+	FirstInstance uint32
+}
+
+const drawIndirectCommandSize = uint64(unsafe.Sizeof(drawIndirectCommand{}))
 
 // matrixSize is the byte size of a single mat4. Used for offset
 // arithmetic in sparse uploads.
@@ -138,6 +161,18 @@ func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.
 	h.entityIdBuffer = entityIdBuffer
 	h.bindGroup = bindGroup
 	h.capacity = newCapacity
+
+	if h.indirectBuffer == nil {
+		indirectBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
+			Label: "mesh indirect buffer",
+			Size:  drawIndirectCommandSize,
+			Usage: wgpu.BufferUsageIndirect | wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst,
+		})
+		if err != nil {
+			return fmt.Errorf("mesh pass: indirect buffer: %w", err)
+		}
+		h.indirectBuffer = indirectBuffer
+	}
 	return nil
 }
 

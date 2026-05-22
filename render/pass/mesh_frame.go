@@ -144,6 +144,20 @@ func meshPrepare(s any, context *render.PassContext) error {
 		return state.sortedHandles[i] < state.sortedHandles[j]
 	})
 
+	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
+	for _, handle := range state.sortedHandles {
+		bucket := state.perHandle[handle]
+		entry, ok := assets.Lookup(handle)
+		if !ok {
+			continue
+		}
+		command := drawIndirectCommand{
+			VertexCount:   entry.VertexCount,
+			InstanceCount: uint32(len(bucket.slotEntity)),
+		}
+		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.indirectBuffer, 0, bytesOf(&command))
+	}
+
 	return nil
 }
 
@@ -193,7 +207,7 @@ func meshExecute(s any, context *render.PassContext) error {
 		}
 		pass.SetBindGroup(2, bucket.bindGroup, nil)
 		pass.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
-		pass.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
+		drawHandle(pass, bucket, entry.VertexCount, uint32(len(bucket.slotEntity)))
 	}
 
 	pass.End()
