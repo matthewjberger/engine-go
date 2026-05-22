@@ -363,7 +363,24 @@ func spotShadowPrepare(s any, context *render.PassContext) error {
 		atlasOffY := float32(row) / float32(SpotShadowSlotsPerRow)
 		atlasScale := float32(1) / float32(SpotShadowSlotsPerRow)
 
-		slotUniform := spotShadowSlotUniform{LightViewProj: viewProj}
+		// Fold the slot's atlas position into the shadow-pass
+		// view-projection. clip.xy (=[-1,1] over the slot's
+		// rendered geometry) gets scaled + translated so the slot
+		// occupies its 2x2 cell of the atlas rather than the
+		// entire attachment. Avoids needing SetViewport /
+		// SetScissorRect, which the wasm wgpu binding doesn't
+		// expose.
+		atlasBiasX := 2*atlasOffX - 1 + atlasScale
+		atlasBiasY := 1 - 2*atlasOffY - atlasScale
+		atlasTransform := mgl32.Mat4{
+			atlasScale, 0, 0, 0,
+			0, atlasScale, 0, 0,
+			0, 0, 1, 0,
+			atlasBiasX, atlasBiasY, 0, 1,
+		}
+		slotViewProj := atlasTransform.Mul4(viewProj)
+
+		slotUniform := spotShadowSlotUniform{LightViewProj: slotViewProj}
 		writeBuffer(context.Device, context.Queue, context.Encoder, shadow.SlotBuffers[index], 0, bytesOf(&slotUniform))
 
 		meshUniform.Entries[index] = spotShadowEntry{

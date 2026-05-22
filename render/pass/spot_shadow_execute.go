@@ -1,5 +1,3 @@
-//go:build !js
-
 package pass
 
 import (
@@ -10,6 +8,12 @@ import (
 	"indigo/render/asset"
 )
 
+// spotShadowExecute renders every active spot light's shadow into
+// its slot of the shared atlas. Each slot's view-projection has
+// already been multiplied by a clip-space atlas-region transform
+// in prepare, so the slot's geometry naturally clips to its 2x2
+// cell of the attachment without needing SetViewport. Works on
+// native and wasm.
 func spotShadowExecute(s any, context *render.PassContext) error {
 	state := s.(*spotShadowPassState)
 	shadow := state.shadow
@@ -24,27 +28,19 @@ func spotShadowExecute(s any, context *render.PassContext) error {
 	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
 	lightMask := ecs.MustMaskOf[render.Light](context.World)
 
+	passEnc := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
+		Label: "spot shadow atlas",
+		DepthStencilAttachment: &wgpu.RenderPassDepthStencilAttachment{
+			View:            shadow.AtlasView,
+			DepthLoadOp:     wgpu.LoadOpClear,
+			DepthStoreOp:    wgpu.StoreOpStore,
+			DepthClearValue: 1.0,
+		},
+	})
+	defer passEnc.Release()
+	passEnc.SetPipeline(state.pipeline)
+
 	for index := uint32(0); index < shadow.ActiveCount; index++ {
-		slotX := (index % SpotShadowSlotsPerRow) * SpotShadowSlotSize
-		slotY := (index / SpotShadowSlotsPerRow) * SpotShadowSlotSize
-		var loadOp wgpu.LoadOp
-		if index == 0 {
-			loadOp = wgpu.LoadOpClear
-		} else {
-			loadOp = wgpu.LoadOpLoad
-		}
-		passEnc := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
-			Label: "spot shadow slot",
-			DepthStencilAttachment: &wgpu.RenderPassDepthStencilAttachment{
-				View:            shadow.AtlasView,
-				DepthLoadOp:     loadOp,
-				DepthStoreOp:    wgpu.StoreOpStore,
-				DepthClearValue: 1.0,
-			},
-		})
-		passEnc.SetPipeline(state.pipeline)
-		passEnc.SetViewport(float32(slotX), float32(slotY), float32(SpotShadowSlotSize), float32(SpotShadowSlotSize), 0, 1)
-		passEnc.SetScissorRect(slotX, slotY, SpotShadowSlotSize, SpotShadowSlotSize)
 		passEnc.SetBindGroup(0, state.slotBgs[index], nil)
 		for _, handle := range meshState.sortedHandles {
 			bucket := meshState.perHandle[handle]
@@ -55,15 +51,13 @@ func spotShadowExecute(s any, context *render.PassContext) error {
 			shadowBg, err := ensureShadowHandleBindGroup(bucket, context.Device, state.handleBgLayout)
 			if err != nil {
 				passEnc.End()
-				passEnc.Release()
 				return err
 			}
 			passEnc.SetBindGroup(1, shadowBg, nil)
 			passEnc.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
 			drawNonLightInstances(passEnc, bucket, entry.VertexCount, lightMask, context.World)
 		}
-		passEnc.End()
-		passEnc.Release()
 	}
+	passEnc.End()
 	return nil
 }
