@@ -59,12 +59,18 @@ type MeshVertex struct {
 // vertex count, and an optional base-color texture handle. Meshes
 // loaded from glTF carry their texture here so the mesh pass binds
 // it automatically when drawing instances of that handle.
+//
+// CpuVertices keeps a copy of the source vertex slice so debug
+// passes (normal visualization) can transform per-vertex normals
+// into world space without round-tripping through a compute
+// shader. ~40 bytes per vertex; a 30k-vertex helmet costs ~1.2MB.
 type meshEntry struct {
 	Name        string
 	Vertices    *wgpu.Buffer
 	VertexCount uint32
 	Texture     TextureID
 	Bounds      BoundingVolume
+	CpuVertices []MeshVertex
 }
 
 // MeshAssets is the engine's per-renderer mesh registry. Stored on the
@@ -98,14 +104,28 @@ func (assets *MeshAssets) Register(device *wgpu.Device, name string, vertices []
 	if err != nil {
 		return 0, fmt.Errorf("mesh assets: %s vertex buffer: %w", name, err)
 	}
+	cpu := make([]MeshVertex, len(vertices))
+	copy(cpu, vertices)
 	handle := MeshHandle(len(assets.entries))
 	assets.entries = append(assets.entries, meshEntry{
 		Name:        name,
 		Vertices:    buffer,
 		VertexCount: uint32(len(vertices)),
 		Bounds:      ComputeBounds(vertices),
+		CpuVertices: cpu,
 	})
 	return handle, nil
+}
+
+// CpuVertices returns the CPU-side vertex slice for a registered
+// mesh, or nil for an unknown handle. Used by debug overlays
+// (normal visualization) that need to iterate vertices without
+// reading them back from the GPU.
+func (assets *MeshAssets) CpuVertices(handle MeshHandle) []MeshVertex {
+	if int(handle) >= len(assets.entries) {
+		return nil
+	}
+	return assets.entries[handle].CpuVertices
 }
 
 // Lookup returns the per-mesh entry for handle. Callers that pass an

@@ -140,6 +140,7 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	worlds.EngineSchedule.Push("animations", asset.UpdateAnimationPlayers)
 	worlds.EngineSchedule.Push("transform_propagation", transform.UpdateGlobalTransforms)
 	worlds.EngineSchedule.Push("bounding_volume_lines", pass.UpdateBoundingVolumeLines)
+	worlds.EngineSchedule.Push("normal_lines", pass.UpdateNormalLines)
 	_ = advanceSpinners
 
 	demo := editorApp()

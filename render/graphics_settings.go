@@ -14,16 +14,27 @@ type GraphicsSettings struct {
 	ShowGrid    bool
 	FxaaEnabled bool
 	ShowBounds  bool
+	ShowNormals bool
+
+	// NormalLineLength scales the per-vertex normal line emitted
+	// when ShowNormals is true. World units.
+	NormalLineLength float32
+
+	// NormalLineColor is the RGBA used for the debug normal lines.
+	NormalLineColor [4]float32
 }
 
 // DefaultGraphicsSettings returns settings with everything enabled
 // except the debug bounding-volume overlay.
 func DefaultGraphicsSettings() GraphicsSettings {
 	return GraphicsSettings{
-		ShowSky:     true,
-		ShowGrid:    true,
-		FxaaEnabled: true,
-		ShowBounds:  false,
+		ShowSky:          true,
+		ShowGrid:         true,
+		FxaaEnabled:      true,
+		ShowBounds:       false,
+		ShowNormals:      false,
+		NormalLineLength: 0.08,
+		NormalLineColor:  [4]float32{1.0, 0.92, 0.2, 0.95},
 	}
 }
 
@@ -48,6 +59,10 @@ func UpdateGraphicsToggles(world *ecs.World) {
 			settings.ShowSky = !settings.ShowSky
 		case 'F':
 			settings.FxaaEnabled = !settings.FxaaEnabled
+		case 'B':
+			settings.ShowBounds = !settings.ShowBounds
+		case 'N':
+			settings.ShowNormals = !settings.ShowNormals
 		}
 	}
 }
