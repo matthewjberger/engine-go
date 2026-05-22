@@ -132,7 +132,7 @@ type clusterResources struct {
 	lightIndices   *wgpu.Buffer
 	lights         *wgpu.Buffer
 
-	prevUniforms ClusterUniforms
+	prevUniforms  ClusterUniforms
 	uniformsDirty bool
 }
 

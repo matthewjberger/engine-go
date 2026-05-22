@@ -313,9 +313,17 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
 }
 
 @fragment
-fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> FragmentOutput {
+fn fragment_main(in: VertexOutput) -> FragmentOutput {
     let mat = materials[in.material_index];
 
+    // View direction in world space, recovered from the camera
+    // position uniform (NOT from -world_pos — that only worked
+    // when the camera sat at the origin).
+    let view_dir = normalize(cluster_uniforms.camera_position.xyz - in.world_pos);
+
+    // Re-derive the geometric normal. Falls back to a screen-space
+    // derivative when the interpolated vertex normal is degenerate
+    // (e.g., a flat-shaded primitive with all-zero NORMAL data).
     let derived_normal = normalize(cross(dpdx(in.world_pos), dpdy(in.world_pos)));
     let n_len = length(in.world_normal);
     var geom_normal: vec3<f32>;
@@ -324,8 +332,16 @@ fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) ->
     } else {
         geom_normal = derived_normal;
     }
-    if (!front_facing) {
+    var geom_tangent = in.world_tangent;
+
+    // Back-face flip. Use the view-dir dot product instead of the
+    // WGSL front_facing builtin: front_facing depends on culling
+    // state and produces wrong results with CullModeNone +
+    // double-sided meshes. Flipping the normal also flips the
+    // tangent so the TBN basis stays consistent under the flip.
+    if (dot(geom_normal, view_dir) < 0.0) {
         geom_normal = -geom_normal;
+        geom_tangent = -geom_tangent;
     }
 
     var normal_sample = vec3<f32>(0.5, 0.5, 1.0);
@@ -333,7 +349,7 @@ fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) ->
     if (has_normal_texture) {
         normal_sample = sample_linear_layer(mat.normal_layer, in.uv).xyz;
     }
-    let normal = get_normal(geom_normal, in.world_tangent, normal_sample, has_normal_texture, mat.normal_scale, 0u);
+    let normal = get_normal(geom_normal, geom_tangent, normal_sample, has_normal_texture, mat.normal_scale, 0u);
 
     var albedo_sample = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     if (mat.base_layer != NO_LAYER) {
@@ -356,10 +372,14 @@ fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) ->
     roughness = clamp(roughness, 0.04, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
 
+    // Raw occlusion sample. Strength is applied later via the
+    // mix(ambient, ambient*occlusion, strength) so the term only
+    // attenuates the ambient IBL contribution, matching
+    // nightshade. Applying strength here too double-counts it and
+    // crushes ambient on any material with strength != 1.
     var occlusion = 1.0;
     if (mat.occlusion_layer != NO_LAYER) {
-        let occ_sample = sample_linear_layer(mat.occlusion_layer, in.uv).r;
-        occlusion = 1.0 + mat.occlusion_strength * (occ_sample - 1.0);
+        occlusion = sample_linear_layer(mat.occlusion_layer, in.uv).r;
     }
 
     var emissive = mat.emissive_factor;
@@ -374,7 +394,10 @@ fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) ->
         return out_unlit;
     }
 
-    let v = normalize(cluster_uniforms.camera_position.xyz - in.world_pos);
+    // Reuse the view_dir computed above for V (post back-face
+    // flip, the geom_normal points toward view_dir so V matches
+    // nightshade's `V = normalize(camera_position - world_pos)`).
+    let v = view_dir;
     let n = normal;
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
 

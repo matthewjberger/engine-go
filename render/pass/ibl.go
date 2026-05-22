@@ -22,12 +22,12 @@ var filterEnvmapShader string
 
 // IBL grid sizes match nightshade's defaults.
 const (
-	BrdfLutSize          uint32 = 256
-	IrradianceSize       uint32 = 64
-	PrefilteredSize      uint32 = 512
-	PrefilteredMipLevels uint32 = 5
-	IrradianceSamples    uint32 = 1024
-	PrefilteredSamples   uint32 = 512
+	BrdfLutSize           uint32 = 256
+	IrradianceSize        uint32 = 64
+	PrefilteredSize       uint32 = 512
+	PrefilteredMipLevels  uint32 = 5
+	IrradianceSamples     uint32 = 1024
+	PrefilteredSamples    uint32 = 512
 	ProceduralCubemapSize uint32 = 1024
 )
 
@@ -39,15 +39,15 @@ const (
 // samples these every frame to evaluate ambient diffuse + ambient
 // specular.
 type IBL struct {
-	BrdfLut          *wgpu.Texture
-	BrdfLutView      *wgpu.TextureView
-	Cubemap          *wgpu.Texture
-	CubemapView      *wgpu.TextureView
-	Irradiance       *wgpu.Texture
-	IrradianceView   *wgpu.TextureView
-	Prefiltered      *wgpu.Texture
-	PrefilteredView  *wgpu.TextureView
-	Sampler          *wgpu.Sampler
+	BrdfLut         *wgpu.Texture
+	BrdfLutView     *wgpu.TextureView
+	Cubemap         *wgpu.Texture
+	CubemapView     *wgpu.TextureView
+	Irradiance      *wgpu.Texture
+	IrradianceView  *wgpu.TextureView
+	Prefiltered     *wgpu.Texture
+	PrefilteredView *wgpu.TextureView
+	Sampler         *wgpu.Sampler
 }
 
 // IBLResource is the typed wrapper apps put on the engine world
