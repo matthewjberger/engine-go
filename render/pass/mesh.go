@@ -3,6 +3,7 @@ package pass
 import (
 	_ "embed"
 	"fmt"
+	"math"
 	"sort"
 	"unsafe"
 
@@ -56,10 +57,14 @@ func releaseHandleInstances(h *handleInstances) {
 // meshPassState is the long-lived state the mesh pass keeps.
 //
 //   - viewProjBindGroup (group 0): view × projection uniform.
-//   - globalBindGroup   (group 1): lights uniform + sRGB / linear
-//     texture array views + the shared sampler. Built once at pass
-//     setup; the texture array contents change via WriteTexture but
-//     the views stay valid.
+//   - globalBindGroup   (group 1): clustered-lighting bindings
+//     (lights / light_grid / light_indices / cluster_uniforms /
+//     view_matrix) + sRGB / linear texture array views + the
+//     shared sampler. The cluster compute passes write into the
+//     same lights / light_grid / light_indices buffers from
+//     [clusterResources], so the read-only views the mesh shader
+//     binds here are consistent the moment the compute passes
+//     finish.
 //   - per-handle bind group (group 2): models / materials /
 //     entity_ids storage buffers for that handle's instances.
 type meshPassState struct {
@@ -71,37 +76,22 @@ type meshPassState struct {
 	viewProjBuffer    *wgpu.Buffer
 	viewProjBindGroup *wgpu.BindGroup
 
-	lightsBuffer    *wgpu.Buffer
 	globalBindGroup *wgpu.BindGroup
+
+	clusters *clusterResources
 
 	perHandle     map[asset.MeshHandle]*handleInstances
 	entityHandle  map[ecs.Entity]asset.MeshHandle
 	sortedHandles []asset.MeshHandle
 
 	aspectFn func() float32
-}
 
-// lightDataUniform mirrors the WGSL LightData struct (48 bytes,
-// vec3 alignment with f32 scalars packing into the trailing 4
-// bytes of each vec3 slot).
-type lightDataUniform struct {
-	Position  [3]float32
-	LightType uint32
-	Direction [3]float32
-	Range     float32
-	Color     [3]float32
-	Intensity float32
-}
-
-// lightsUniform mirrors the WGSL Lights struct: u32 count plus 12
-// bytes of padding to land the array at a 16-byte boundary, then
-// render.MaxLights LightData entries.
-type lightsUniform struct {
-	Count uint32
-	Pad0  uint32
-	Pad1  uint32
-	Pad2  uint32
-	Data  [render.MaxLights]lightDataUniform
+	// clusterUniformsScratch is reused across frames to avoid
+	// reallocating the per-frame ClusterUniforms upload value.
+	clusterUniformsScratch ClusterUniforms
+	lightScratch           []LightGPU
+	prevScreenW            uint32
+	prevScreenH            uint32
 }
 
 // NewMeshPass builds the engine's instanced PBR mesh pass.
@@ -139,18 +129,30 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 			{
 				Binding:    0,
 				Visibility: wgpu.ShaderStageFragment,
-				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform},
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
 			},
 			{
 				Binding:    1,
 				Visibility: wgpu.ShaderStageFragment,
-				Texture: wgpu.TextureBindingLayout{
-					SampleType:    wgpu.TextureSampleTypeFloat,
-					ViewDimension: wgpu.TextureViewDimension2DArray,
-				},
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
 			},
 			{
 				Binding:    2,
+				Visibility: wgpu.ShaderStageFragment,
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
+			},
+			{
+				Binding:    3,
+				Visibility: wgpu.ShaderStageFragment,
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform},
+			},
+			{
+				Binding:    4,
+				Visibility: wgpu.ShaderStageFragment,
+				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform},
+			},
+			{
+				Binding:    5,
 				Visibility: wgpu.ShaderStageFragment,
 				Texture: wgpu.TextureBindingLayout{
 					SampleType:    wgpu.TextureSampleTypeFloat,
@@ -158,7 +160,15 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 				},
 			},
 			{
-				Binding:    3,
+				Binding:    6,
+				Visibility: wgpu.ShaderStageFragment,
+				Texture: wgpu.TextureBindingLayout{
+					SampleType:    wgpu.TextureSampleTypeFloat,
+					ViewDimension: wgpu.TextureViewDimension2DArray,
+				},
+			},
+			{
+				Binding:    7,
 				Visibility: wgpu.ShaderStageFragment,
 				Sampler:    wgpu.SamplerBindingLayout{Type: wgpu.SamplerBindingTypeFiltering},
 			},
@@ -219,24 +229,24 @@ func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect f
 	}
 	state.viewProjBindGroup = viewProjBindGroup
 
-	lightsBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
-		Label: "mesh lights buffer",
-		Size:  uint64(unsafe.Sizeof(lightsUniform{})),
-		Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
-	})
+	clusters, err := newClusterResources(device)
 	if err != nil {
-		return nil, fmt.Errorf("mesh pass: lights buffer: %w", err)
+		return nil, err
 	}
-	state.lightsBuffer = lightsBuffer
+	state.clusters = clusters
 
 	globalBindGroup, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
 		Label:  "mesh global bind group",
 		Layout: globalBgLayout,
 		Entries: []wgpu.BindGroupEntry{
-			{Binding: 0, Buffer: lightsBuffer, Offset: 0, Size: uint64(unsafe.Sizeof(lightsUniform{}))},
-			{Binding: 1, TextureView: arrays.SRGBView},
-			{Binding: 2, TextureView: arrays.LinearView},
-			{Binding: 3, Sampler: arrays.Sampler},
+			{Binding: 0, Buffer: clusters.lights, Offset: 0, Size: wgpu.WholeSize},
+			{Binding: 1, Buffer: clusters.lightGrid, Offset: 0, Size: wgpu.WholeSize},
+			{Binding: 2, Buffer: clusters.lightIndices, Offset: 0, Size: wgpu.WholeSize},
+			{Binding: 3, Buffer: clusters.clusterUniforms, Offset: 0, Size: ClusterUniformsSize},
+			{Binding: 4, Buffer: clusters.viewMatrix, Offset: 0, Size: 64},
+			{Binding: 5, TextureView: arrays.SRGBView},
+			{Binding: 6, TextureView: arrays.LinearView},
+			{Binding: 7, Sampler: arrays.Sampler},
 		},
 	})
 	if err != nil {
@@ -348,11 +358,24 @@ func meshPrepare(s any, context *render.PassContext) error {
 	state := s.(*meshPassState)
 
 	camera := ecs.MustResource[render.Camera](context.World)
-	viewProjection := render.CameraViewProjection(camera, state.aspectFn())
+	aspect := state.aspectFn()
+	viewProjection := render.CameraViewProjection(camera, aspect)
 	writeBuffer(context.Device, context.Queue, context.Encoder, state.viewProjBuffer, 0, bytesOf(&viewProjection))
 
-	lights := extractLights(context.World)
-	writeBuffer(context.Device, context.Queue, context.Encoder, state.lightsBuffer, 0, bytesOf(&lights))
+	view := render.CameraView(camera)
+	writeBuffer(context.Device, context.Queue, context.Encoder, state.clusters.viewMatrix, 0, bytesOf(&view))
+
+	state.lightScratch = extractLights(context.World, state.lightScratch[:0])
+	uploadLights(context.Device, context.Queue, context.Encoder, state.clusters.lights, state.lightScratch)
+	numDirectional, numLocal := splitDirectionalAndLocal(state.lightScratch)
+
+	uniforms := buildClusterUniforms(camera, aspect, context, numDirectional, numLocal)
+	if uniforms != state.clusterUniformsScratch {
+		state.clusterUniformsScratch = uniforms
+		state.clusters.uniformsDirty = true
+		state.clusters.prevUniforms = uniforms
+	}
+	writeBuffer(context.Device, context.Queue, context.Encoder, state.clusters.clusterUniforms, 0, bytesOf(&uniforms))
 
 	for _, event := range ecs.DrainEvents[ecs.EntityDespawned](context.World) {
 		releaseEntitySlot(state, context, event.Entity)
@@ -464,6 +487,8 @@ func meshPrepare(s any, context *render.PassContext) error {
 func meshExecute(s any, context *render.PassContext) error {
 	state := s.(*meshPassState)
 
+	dispatchClusterPasses(state, context)
+
 	if len(state.sortedHandles) == 0 {
 		return nil
 	}
@@ -516,8 +541,8 @@ func meshRelease(s any) {
 	if state.globalBindGroup != nil {
 		state.globalBindGroup.Release()
 	}
-	if state.lightsBuffer != nil {
-		state.lightsBuffer.Release()
+	if state.clusters != nil {
+		state.clusters.release()
 	}
 	if state.viewProjBindGroup != nil {
 		state.viewProjBindGroup.Release()
@@ -540,31 +565,176 @@ func meshRelease(s any) {
 }
 
 // extractLights walks the engine world for entities with both
-// [render.Light] and [transform.GlobalTransform] and packs them
-// into the uniform layout the mesh shader expects.
-func extractLights(world *ecs.World) lightsUniform {
-	out := lightsUniform{}
+// [render.Light] and [transform.GlobalTransform], packs them into
+// the [LightGPU] layout the cluster compute + mesh shaders share,
+// and returns directional lights first followed by local
+// (point/spot) lights. The cluster_light_assign pass culls only
+// the local-light suffix; directional lights are iterated by
+// every fragment regardless of position.
+//
+// Color is premultiplied by intensity so the shader doesn't have
+// to multiply at sample time (matches nightshade's projection.rs
+// packing).
+func extractLights(world *ecs.World, scratch []LightGPU) []LightGPU {
+	out := scratch
+	out = out[:0]
 	lightMask := ecs.MustMaskOf[render.Light](world)
 	globalMask := ecs.MustMaskOf[transform.GlobalTransform](world)
 	world.ForEach(lightMask|globalMask, 0, func(_ ecs.Entity, table *ecs.Archetype, index int) {
-		if out.Count >= render.MaxLights {
+		if uint32(len(out)) >= MaxLightsBuffer {
 			return
 		}
 		lights, _ := ecs.Column[render.Light](world, table)
 		globals, _ := ecs.Column[transform.GlobalTransform](world, table)
 		light := &lights[index]
 		matrix := globals[index].Matrix
-		out.Data[out.Count] = lightDataUniform{
-			Position:  [3]float32{matrix[12], matrix[13], matrix[14]},
-			LightType: uint32(light.Type),
-			Direction: [3]float32{-matrix[8], -matrix[9], -matrix[10]},
-			Range:     light.Range,
-			Color:     [3]float32{light.Color[0], light.Color[1], light.Color[2]},
-			Intensity: light.Intensity,
-		}
-		out.Count++
+		out = append(out, LightGPU{
+			Position:    [4]float32{matrix[12], matrix[13], matrix[14], 1.0},
+			Direction:   [4]float32{-matrix[8], -matrix[9], -matrix[10], 0.0},
+			Color:       [4]float32{light.Color[0] * light.Intensity, light.Color[1] * light.Intensity, light.Color[2] * light.Intensity, 1.0},
+			LightType:   uint32(light.Type),
+			Range:       light.Range,
+			InnerCone:   float32(cosOrZero(light.InnerConeAngle)),
+			OuterCone:   float32(cosOrZero(light.OuterConeAngle)),
+			ShadowIndex: -1,
+			LightSize:   0,
+			CookieLayer: 0xFFFFFFFF,
+			Padding:     0,
+		})
 	})
+	sortDirectionalFirst(out)
 	return out
+}
+
+func cosOrZero(angle float32) float32 {
+	if angle <= 0 {
+		return 0
+	}
+	return float32(math.Cos(float64(angle)))
+}
+
+// sortDirectionalFirst stable-partitions the slice so every
+// directional light precedes every point/spot light. The cluster
+// shader assumes this layout (num_directional_lights is the
+// boundary index into the same buffer).
+func sortDirectionalFirst(lights []LightGPU) {
+	left := 0
+	for i := range lights {
+		if lights[i].LightType == uint32(render.LightTypeDirectional) {
+			if i != left {
+				lights[left], lights[i] = lights[i], lights[left]
+			}
+			left++
+		}
+	}
+}
+
+func splitDirectionalAndLocal(lights []LightGPU) (directional, local uint32) {
+	for _, l := range lights {
+		if l.LightType == uint32(render.LightTypeDirectional) {
+			directional++
+		}
+	}
+	local = uint32(len(lights)) - directional
+	return
+}
+
+func uploadLights(device *wgpu.Device, queue *wgpu.Queue, encoder *wgpu.CommandEncoder, buffer *wgpu.Buffer, lights []LightGPU) {
+	if len(lights) == 0 {
+		return
+	}
+	writeBuffer(device, queue, encoder, buffer, 0, lightsAsBytes(lights))
+}
+
+func lightsAsBytes(lights []LightGPU) []byte {
+	if len(lights) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(&lights[0])), int(LightGPUSize)*len(lights))
+}
+
+// buildClusterUniforms snapshots the camera into the WGSL
+// ClusterUniforms layout. The compute and fragment shaders read
+// this every frame to size tiles and clamp depth slices.
+func buildClusterUniforms(camera *render.Camera, aspect float32, context *render.PassContext, numDirectional, numLocal uint32) ClusterUniforms {
+	proj := render.CameraProjection(camera, aspect)
+	invProj := proj.Inv()
+	w, h := framebufferSize(context)
+	screenW := float32(w)
+	screenH := float32(h)
+	if screenW <= 0 {
+		screenW = 1
+	}
+	if screenH <= 0 {
+		screenH = 1
+	}
+	tileX := screenW / float32(ClusterGridX)
+	tileY := screenH / float32(ClusterGridY)
+	zNear := camera.Near
+	zFar := camera.Far
+	if zNear <= 0 {
+		zNear = 0.1
+	}
+	if zFar <= zNear {
+		zFar = zNear + 1.0
+	}
+	var u ClusterUniforms
+	copy(u.InverseProjection[:], invProj[:])
+	u.ScreenSize = [2]float32{screenW, screenH}
+	u.ZNear = zNear
+	u.ZFar = zFar
+	u.ClusterCount = [4]uint32{ClusterGridX, ClusterGridY, ClusterGridZ, 0}
+	u.TileSize = [2]float32{tileX, tileY}
+	u.NumLights = numDirectional + numLocal
+	u.NumDirectionalLights = numDirectional
+	return u
+}
+
+// framebufferSize returns the renderer's current swapchain
+// dimensions so the cluster grid tracks viewport resizes.
+func framebufferSize(context *render.PassContext) (uint32, uint32) {
+	renderer := ecs.MustResource[render.RendererResource](context.World).Renderer
+	return renderer.Config.Width, renderer.Config.Height
+}
+
+// dispatchClusterPasses runs the two compute pipelines that
+// rebuild the cluster grid and assign lights to each cluster.
+// Called from [meshExecute] BEFORE BeginRenderPass — compute
+// dispatches can't share an encoder pass with a render pass.
+//
+//  1. cluster_bounds: writes per-cluster view-space AABBs.
+//     Re-dispatched every frame for simplicity; nightshade gates
+//     this on a "camera changed" flag, but the cost of running
+//     8x8x24 = 1536 invocations is trivial.
+//  2. copy lightGridReset -> lightGrid (zeros every count).
+//  3. cluster_light_assign: per cluster, tests every local light
+//     against the AABB and writes intersecting indices to
+//     light_indices + light_grid[cluster].count.
+func dispatchClusterPasses(state *meshPassState, context *render.PassContext) {
+	dispatchX := (ClusterGridX + 7) / 8
+	dispatchY := (ClusterGridY + 7) / 8
+	dispatchZ := ClusterGridZ
+
+	boundsPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{
+		Label: "cluster bounds",
+	})
+	boundsPass.SetPipeline(state.clusters.boundsPipeline)
+	boundsPass.SetBindGroup(0, state.clusters.boundsBindGroup, nil)
+	boundsPass.DispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
+	boundsPass.End()
+	boundsPass.Release()
+
+	lightGridBytes := LightGridSize * uint64(TotalClusters)
+	context.Encoder.CopyBufferToBuffer(state.clusters.lightGridReset, 0, state.clusters.lightGrid, 0, lightGridBytes)
+
+	assignPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{
+		Label: "cluster light assign",
+	})
+	assignPass.SetPipeline(state.clusters.assignPipeline)
+	assignPass.SetBindGroup(0, state.clusters.assignBindGroup, nil)
+	assignPass.DispatchWorkgroups(dispatchX, dispatchY, dispatchZ)
+	assignPass.End()
+	assignPass.Release()
 }
 
 // releaseEntitySlot is the despawn handler: swap-remove the

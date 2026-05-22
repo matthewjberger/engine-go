@@ -153,6 +153,7 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	initializeWorldEntities(worlds,
 		[]asset.MeshHandle{primitives.UnitTriangle, primitives.UnitQuad, primitives.UnitCube},
 		[]string{"Triangle", "Quad", "Cube"},
+		primitives.UnitCube,
 	)
 	loadDefaultGltf(engine, renderer)
 
@@ -481,8 +482,14 @@ func inspectorLabel(b *ui.Builder, initial string) ecs.Entity {
 // cycling through the supplied mesh handles for visual variety, plus
 // a matching game entity per engine entity carrying its Spinner state
 // and EngineEntity bridge. Also spawns a sun-like directional light
-// pointing straight down.
-func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshNames []string) {
+// and a handful of small colored point + spot light "orbs" so the
+// clustered lighting pipeline has visible local lights to cull.
+//
+// orbMesh is the mesh handle used for the visible body of each
+// orb (typically the unit cube primitive) — the orb's material is
+// marked unlit so the cube renders at its light's color regardless
+// of which other lights also illuminate it.
+func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshNames []string, orbMesh asset.MeshHandle) {
 	const (
 		gridExtent  = 3
 		gridSpacing = 1.5
@@ -494,17 +501,29 @@ func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshN
 		ecs.MustMaskOf[render.Light](worlds.Engine) |
 		ecs.MustMaskOf[app.Name](worlds.Engine)
 
+	// Matches nightshade's spawn_sun: positioned above-right, rotated
+	// PI/4 yaw + -PI/6 pitch so the directional light angles down at
+	// the scene from the side, warm white color, intensity 5.
 	sun := worlds.Engine.Spawn(lightMask)
-	sunTransform := transform.IdentityLocalTransform()
-	sunTransform.Rotation = transform.QuatFromAxisAngle(-float32(math.Pi/2), transform.Vec3{1, 0, 0})
+	sunTransform := transform.LocalTransform{
+		Translation: transform.Vec3{5, 10, 5},
+		Rotation: transform.QuatFromAxisAngle(float32(math.Pi/4), transform.Vec3{0, 1, 0}).
+			Mul(transform.QuatFromAxisAngle(-float32(math.Pi/6), transform.Vec3{1, 0, 0})),
+		Scale: transform.Vec3{1, 1, 1},
+	}
 	ecs.Set(worlds.Engine, sun, sunTransform)
 	ecs.Set(worlds.Engine, sun, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, sun, render.Light{
-		Type:      render.LightTypeDirectional,
-		Color:     transform.Vec3{1.0, 0.95, 0.85},
-		Intensity: 1.4,
+		Type:           render.LightTypeDirectional,
+		Color:          transform.Vec3{1.0, 0.95, 0.8},
+		Intensity:      5.0,
+		Range:          100.0,
+		InnerConeAngle: float32(math.Pi / 6),
+		OuterConeAngle: float32(math.Pi / 4),
 	})
 	ecs.Set(worlds.Engine, sun, app.Name{Value: "Sun"})
+
+	spawnLightOrbs(worlds, orbMesh)
 
 	engineMask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
@@ -572,4 +591,115 @@ func advanceSpinners(game *ecs.World) {
 
 		app.SyncEngineRotation(engineRef.World, links[index], s.Rotation)
 	})
+}
+
+// spawnLightOrbs scatters a handful of colored point lights and a
+// downward spot light around the origin so the clustered light
+// pipeline has something to cull. Each light entity also carries a
+// small unlit cube the same color as its light, making the orb's
+// position visible even when its light doesn't reach a given
+// fragment.
+func spawnLightOrbs(worlds app.Worlds, orbMesh asset.MeshHandle) {
+	const orbScale float32 = 0.12
+	scale := transform.Vec3{orbScale, orbScale, orbScale}
+
+	type point struct {
+		Name      string
+		Position  transform.Vec3
+		Color     transform.Vec3
+		Intensity float32
+		Range     float32
+	}
+	points := []point{
+		{Name: "Red Orb", Position: transform.Vec3{2.0, 0.4, 0}, Color: transform.Vec3{1.0, 0.1, 0.1}, Intensity: 8, Range: 3.0},
+		{Name: "Green Orb", Position: transform.Vec3{-2.0, 0.4, 0}, Color: transform.Vec3{0.1, 1.0, 0.2}, Intensity: 8, Range: 3.0},
+		{Name: "Blue Orb", Position: transform.Vec3{0, 0.4, 2.0}, Color: transform.Vec3{0.1, 0.3, 1.0}, Intensity: 8, Range: 3.0},
+		{Name: "Magenta Orb", Position: transform.Vec3{0, 0.4, -2.0}, Color: transform.Vec3{1.0, 0.2, 1.0}, Intensity: 8, Range: 3.0},
+	}
+	for _, p := range points {
+		spawnPointOrb(worlds, orbMesh, p.Name, p.Position, scale, p.Color, p.Intensity, p.Range)
+	}
+
+	spawnSpotOrb(worlds, orbMesh,
+		"Yellow Spot",
+		transform.Vec3{0, 2.5, 0},
+		scale,
+		transform.Vec3{1.0, 0.95, 0.3},
+		20.0,
+		6.0,
+		float32(math.Pi/8),
+		float32(math.Pi/5),
+	)
+}
+
+func spawnPointOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, position, scale, color transform.Vec3, intensity, range_ float32) {
+	mask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
+		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
+		ecs.MustMaskOf[transform.LocalTransformDirty](worlds.Engine) |
+		ecs.MustMaskOf[asset.RenderMesh](worlds.Engine) |
+		ecs.MustMaskOf[asset.Material](worlds.Engine) |
+		ecs.MustMaskOf[render.Light](worlds.Engine) |
+		ecs.MustMaskOf[app.Name](worlds.Engine)
+
+	entity := worlds.Engine.Spawn(mask)
+	ecs.Set(worlds.Engine, entity, transform.LocalTransform{
+		Translation: position,
+		Rotation:    transform.IdentityLocalTransform().Rotation,
+		Scale:       scale,
+	})
+	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
+	ecs.Set(worlds.Engine, entity, asset.RenderMesh{Mesh: orbMesh})
+
+	orbMaterial := asset.DefaultMaterial()
+	orbMaterial.BaseColor = [4]float32{color[0], color[1], color[2], 1}
+	orbMaterial.Unlit = true
+	ecs.Set(worlds.Engine, entity, orbMaterial)
+
+	ecs.Set(worlds.Engine, entity, render.Light{
+		Type:      render.LightTypePoint,
+		Color:     color,
+		Intensity: intensity,
+		Range:     range_,
+	})
+	ecs.Set(worlds.Engine, entity, app.Name{Value: name})
+}
+
+// spawnSpotOrb spawns a spot-light orb whose cone aims straight
+// down (-Y). The light entity's rotation rotates +Z to -Y so the
+// transform's -Z column (which the renderer reads as the light's
+// world-space direction) lands on (0, -1, 0).
+func spawnSpotOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, position, scale, color transform.Vec3, intensity, range_, innerCone, outerCone float32) {
+	mask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
+		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
+		ecs.MustMaskOf[transform.LocalTransformDirty](worlds.Engine) |
+		ecs.MustMaskOf[asset.RenderMesh](worlds.Engine) |
+		ecs.MustMaskOf[asset.Material](worlds.Engine) |
+		ecs.MustMaskOf[render.Light](worlds.Engine) |
+		ecs.MustMaskOf[app.Name](worlds.Engine)
+
+	entity := worlds.Engine.Spawn(mask)
+	// Rotate +Z to -Y: rotation around +X by -PI/2.
+	rotation := transform.QuatFromAxisAngle(-float32(math.Pi/2), transform.Vec3{1, 0, 0})
+	ecs.Set(worlds.Engine, entity, transform.LocalTransform{
+		Translation: position,
+		Rotation:    rotation,
+		Scale:       scale,
+	})
+	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
+	ecs.Set(worlds.Engine, entity, asset.RenderMesh{Mesh: orbMesh})
+
+	orbMaterial := asset.DefaultMaterial()
+	orbMaterial.BaseColor = [4]float32{color[0], color[1], color[2], 1}
+	orbMaterial.Unlit = true
+	ecs.Set(worlds.Engine, entity, orbMaterial)
+
+	ecs.Set(worlds.Engine, entity, render.Light{
+		Type:           render.LightTypeSpot,
+		Color:          color,
+		Intensity:      intensity,
+		Range:          range_,
+		InnerConeAngle: innerCone,
+		OuterConeAngle: outerCone,
+	})
+	ecs.Set(worlds.Engine, entity, app.Name{Value: name})
 }

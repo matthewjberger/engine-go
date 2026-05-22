@@ -10,4 +10,4 @@ require (
 
 require github.com/qmuntal/gltf v0.28.0
 
-require golang.org/x/image v0.41.0 // indirect
+require golang.org/x/image v0.41.0

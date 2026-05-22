@@ -1,11 +1,12 @@
-// Mesh pass shader: instanced PBR rendering with shared sRGB +
-// linear texture arrays. Material parameters and texture layer
-// indices live in a per-handle storage buffer. Each fragment
-// samples its material's base color, normal, metallic-roughness,
-// occlusion, and emissive maps, then runs Cook-Torrance shading
-// against every active light. Ports nightshade's mesh.wgsl PBR
-// path, trimmed to the feature set indigo supports today (no
-// skinning, no IBL, no shadow mapping, no morph targets).
+// Mesh pass shader: instanced PBR rendering with clustered light
+// culling. Directional lights live at the head of the lights
+// storage buffer and every fragment iterates them; local lights
+// (point + spot) are pre-bucketed per cluster by the
+// cluster_light_assign compute pass, and each fragment only
+// iterates the lights its cluster overlaps. Ports nightshade's
+// mesh.wgsl PBR + clustered loop, trimmed to the feature set
+// indigo currently supports (no IBL, shadows, skinning, morph
+// targets, or material extensions).
 
 struct VertexInput {
     @location(0) position: vec4<f32>,
@@ -26,21 +27,34 @@ struct VertexOutput {
     @location(6) @interpolate(flat) material_index: u32,
 };
 
-struct LightData {
-    position:   vec3<f32>,
-    light_type: u32,
-    direction:  vec3<f32>,
-    range:      f32,
-    color:      vec3<f32>,
-    intensity:  f32,
+struct Light {
+    position:    vec4<f32>,
+    direction:   vec4<f32>,
+    color:       vec4<f32>,
+    light_type:  u32,
+    range:       f32,
+    inner_cone:  f32,
+    outer_cone:  f32,
+    shadow_index: i32,
+    light_size:  f32,
+    cookie_layer: u32,
+    _padding:    f32,
 };
 
-struct Lights {
-    count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-    data:  array<LightData, 8>,
+struct LightGrid {
+    offset: u32,
+    count:  u32,
+};
+
+struct ClusterUniforms {
+    inverse_projection: mat4x4<f32>,
+    screen_size: vec2<f32>,
+    z_near: f32,
+    z_far: f32,
+    cluster_count: vec4<u32>,
+    tile_size: vec2<f32>,
+    num_lights: u32,
+    num_directional_lights: u32,
 };
 
 struct Material {
@@ -68,10 +82,14 @@ struct Material {
 
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
 
-@group(1) @binding(0) var<uniform> lights: Lights;
-@group(1) @binding(1) var material_srgb_array:   texture_2d_array<f32>;
-@group(1) @binding(2) var material_linear_array: texture_2d_array<f32>;
-@group(1) @binding(3) var material_sampler:      sampler;
+@group(1) @binding(0) var<storage, read> lights:        array<Light>;
+@group(1) @binding(1) var<storage, read> light_grid:    array<LightGrid>;
+@group(1) @binding(2) var<storage, read> light_indices: array<u32>;
+@group(1) @binding(3) var<uniform>       cluster_uniforms: ClusterUniforms;
+@group(1) @binding(4) var<uniform>       view_matrix:   mat4x4<f32>;
+@group(1) @binding(5) var material_srgb_array:   texture_2d_array<f32>;
+@group(1) @binding(6) var material_linear_array: texture_2d_array<f32>;
+@group(1) @binding(7) var material_sampler:      sampler;
 
 @group(2) @binding(0) var<storage, read> models:     array<mat4x4<f32>>;
 @group(2) @binding(1) var<storage, read> materials:  array<Material>;
@@ -79,6 +97,10 @@ struct Material {
 
 const NO_LAYER: u32 = 0xFFFFFFFFu;
 const PI: f32 = 3.14159265359;
+const MAX_LIGHTS_PER_CLUSTER: u32 = 256u;
+const LIGHT_TYPE_DIRECTIONAL: u32 = 0u;
+const LIGHT_TYPE_POINT: u32 = 1u;
+const LIGHT_TYPE_SPOT: u32 = 2u;
 
 struct FragmentOutput {
     @location(0) color:     vec4<f32>,
@@ -139,6 +161,68 @@ fn geometry_smith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness: f32) -> f
 
 fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (vec3<f32>(1.0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn range_attenuation(range: f32, distance: f32) -> f32 {
+    if (range <= 0.0) {
+        return 1.0;
+    }
+    let clamped_distance = max(distance, 0.01);
+    return max(min(1.0 - pow(distance / range, 4.0), 1.0), 0.0) / (clamped_distance * clamped_distance);
+}
+
+fn spot_attenuation(point_to_light: vec3<f32>, spot_direction: vec3<f32>, outer_cone_cos: f32, inner_cone_cos: f32) -> f32 {
+    let actual_cos = dot(normalize(spot_direction), normalize(-point_to_light));
+    if (actual_cos > outer_cone_cos) {
+        if (actual_cos < inner_cone_cos) {
+            return smoothstep(outer_cone_cos, inner_cone_cos, actual_cos);
+        }
+        return 1.0;
+    }
+    return 0.0;
+}
+
+fn light_radiance(light: Light, point_to_light: vec3<f32>) -> vec3<f32> {
+    var range_atten = 1.0;
+    var spot_atten = 1.0;
+    if (light.light_type != LIGHT_TYPE_DIRECTIONAL) {
+        range_atten = range_attenuation(light.range, length(point_to_light));
+    }
+    if (light.light_type == LIGHT_TYPE_SPOT) {
+        spot_atten = spot_attenuation(point_to_light, light.direction.xyz, light.outer_cone, light.inner_cone);
+    }
+    return range_atten * spot_atten * light.color.rgb;
+}
+
+fn get_cluster_index(frag_coord: vec2<f32>, view_depth: f32) -> u32 {
+    let tile = vec2<u32>(
+        u32(frag_coord.x / cluster_uniforms.tile_size.x),
+        u32(frag_coord.y / cluster_uniforms.tile_size.y)
+    );
+    let log_ratio = log(cluster_uniforms.z_far / cluster_uniforms.z_near);
+    let safe_depth = max(view_depth, cluster_uniforms.z_near);
+    let slice = u32(log(safe_depth / cluster_uniforms.z_near) / log_ratio * f32(cluster_uniforms.cluster_count.z));
+    let clamped_slice = clamp(slice, 0u, cluster_uniforms.cluster_count.z - 1u);
+    let clamped_tile_x = clamp(tile.x, 0u, cluster_uniforms.cluster_count.x - 1u);
+    let clamped_tile_y = clamp(tile.y, 0u, cluster_uniforms.cluster_count.y - 1u);
+    return clamped_tile_x +
+           clamped_tile_y * cluster_uniforms.cluster_count.x +
+           clamped_slice * cluster_uniforms.cluster_count.x * cluster_uniforms.cluster_count.y;
+}
+
+fn shade_one_light(light: Light, point_to_light: vec3<f32>, v: vec3<f32>, n: vec3<f32>, albedo: vec3<f32>, f0: vec3<f32>, metallic: f32, roughness: f32) -> vec3<f32> {
+    let l = normalize(point_to_light);
+    let h = normalize(v + l);
+    let n_dot_l = max(dot(n, l), 0.0);
+    let n_dot_v = max(dot(n, v), 0.0);
+    let radiance = light_radiance(light, point_to_light);
+    let ndf = distribution_ggx(n, h, roughness);
+    let g = geometry_smith(n, v, l, roughness);
+    let f = fresnel_schlick(max(dot(h, v), 0.0), f0);
+    let specular = (ndf * g * f) / (4.0 * n_dot_v * n_dot_l + 0.0001);
+    let kd = (vec3<f32>(1.0) - f) * (1.0 - metallic);
+    let diffuse = kd * albedo / PI;
+    return (diffuse + specular) * radiance * n_dot_l;
 }
 
 @vertex
@@ -230,32 +314,28 @@ fn fragment_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) ->
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
 
     var lo = vec3<f32>(0.0);
-    let count = lights.count;
-    for (var i: u32 = 0u; i < count; i = i + 1u) {
-        let light = lights.data[i];
-        var l: vec3<f32>;
-        var radiance: vec3<f32>;
-        if (light.light_type == 0u) {
-            l = normalize(-light.direction);
-            radiance = light.color * light.intensity;
-        } else {
-            let to_light = light.position - in.world_pos;
-            let dist = length(to_light);
-            l = to_light / max(dist, 0.0001);
-            let attenuation = 1.0 / max(dist * dist, 0.0001);
-            radiance = light.color * light.intensity * attenuation;
-        }
-        let h = normalize(v + l);
-        let n_dot_l = max(dot(n, l), 0.0);
-        let ndf = distribution_ggx(n, h, roughness);
-        let g = geometry_smith(n, v, l, roughness);
-        let f = fresnel_schlick(max(dot(h, v), 0.0), f0);
-        let specular_num = ndf * g * f;
-        let specular_den = 4.0 * max(dot(n, v), 0.0) * n_dot_l + 0.0001;
-        let specular = specular_num / specular_den;
-        let kd = (vec3<f32>(1.0) - f) * (1.0 - metallic);
-        let diffuse = kd * albedo / PI;
-        lo = lo + (diffuse + specular) * radiance * n_dot_l;
+
+    // Iterate every directional light unconditionally; they have no
+    // bounding volume and affect every cluster.
+    for (var i = 0u; i < cluster_uniforms.num_directional_lights; i = i + 1u) {
+        let light = lights[i];
+        let point_to_light = -light.direction.xyz;
+        lo = lo + shade_one_light(light, point_to_light, v, n, albedo, f0, metallic, roughness);
+    }
+
+    // Iterate only the local lights that touch this fragment's
+    // cluster, looked up via screen-space tile + log-z slice.
+    let view_pos = view_matrix * vec4<f32>(in.world_pos, 1.0);
+    let view_depth = -view_pos.z;
+    let cluster_idx = get_cluster_index(in.clip_position.xy, view_depth);
+    let grid = light_grid[cluster_idx];
+    let base = cluster_idx * MAX_LIGHTS_PER_CLUSTER;
+    let cluster_count = min(grid.count, MAX_LIGHTS_PER_CLUSTER);
+    for (var i = 0u; i < cluster_count; i = i + 1u) {
+        let light_idx = light_indices[base + i];
+        let light = lights[cluster_uniforms.num_directional_lights + light_idx];
+        let point_to_light = light.position.xyz - in.world_pos;
+        lo = lo + shade_one_light(light, point_to_light, v, n, albedo, f0, metallic, roughness);
     }
 
     let ambient = albedo * 0.05 * occlusion;
