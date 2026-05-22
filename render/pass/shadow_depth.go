@@ -351,7 +351,7 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 	} else {
 		maxZ *= zMult
 	}
-	lightProj := mgl32.Ortho(minX, maxX, minY, maxY, -maxZ, -minZ)
+	lightProj := orthoZO(minX, maxX, minY, maxY, -maxZ, -minZ)
 	lightVP := lightProj.Mul4(lightView)
 
 	shadow := ecs.MustResource[ShadowResource](context.World).Shadow
@@ -478,6 +478,22 @@ func AddShadowDepthPass(renderer *render.Renderer, shadow *Shadow) (*render.Pass
 func findMeshPassState(_ *ecs.World) (*meshPassState, bool) {
 	state, ok := sharedMeshPassState.Load().(*meshPassState)
 	return state, ok && state != nil
+}
+
+// orthoZO returns a zero-to-one depth orthographic projection
+// suitable for WebGPU's clip space. mgl32.Ortho produces the
+// OpenGL convention with z in [-1, 1] which gets half-clipped
+// when used as a shadow projection target.
+func orthoZO(left, right, bottom, top, near, far float32) mgl32.Mat4 {
+	width := right - left
+	height := top - bottom
+	depth := far - near
+	return mgl32.Mat4{
+		2.0 / width, 0, 0, 0,
+		0, 2.0 / height, 0, 0,
+		0, 0, -1.0 / depth, 0,
+		-(right + left) / width, -(top + bottom) / height, -near / depth, 1,
+	}
 }
 
 // cameraFrustumCornersWorld returns the 8 world-space corners of
