@@ -75,7 +75,10 @@ struct Material {
     unlit:            u32,
     ior:              f32,
 
-    _pad1: vec4<f32>,
+    emissive_strength: f32,
+    _pad1a:            f32,
+    _pad1b:            f32,
+    _pad1c:            f32,
 };
 
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
@@ -467,7 +470,7 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
         occlusion = sample_linear_layer(mat.occlusion_layer, in.uv, uv_ddx, uv_ddy).r;
     }
 
-    var emissive = mat.emissive_factor;
+    var emissive = mat.emissive_factor * mat.emissive_strength;
     if (mat.emissive_layer != NO_LAYER) {
         emissive = emissive * sample_srgb_layer(mat.emissive_layer, in.uv, uv_ddx, uv_ddy).rgb;
     }

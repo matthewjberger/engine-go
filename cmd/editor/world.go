@@ -213,8 +213,7 @@ func spawnPointOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, pos
 	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, entity, asset.RenderMesh{Mesh: orbMesh})
 
-	orbMaterial := asset.DefaultMaterial()
-	orbMaterial.BaseColor = [4]float32{color[0], color[1], color[2], 1}
+	orbMaterial := asset.EmissiveMaterial([3]float32{color[0], color[1], color[2]}, 8.0)
 	orbMaterial.Unlit = true
 	ecs.Set(worlds.Engine, entity, orbMaterial)
 
@@ -251,8 +250,7 @@ func spawnSpotOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, posi
 	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, entity, asset.RenderMesh{Mesh: orbMesh})
 
-	orbMaterial := asset.DefaultMaterial()
-	orbMaterial.BaseColor = [4]float32{color[0], color[1], color[2], 1}
+	orbMaterial := asset.EmissiveMaterial([3]float32{color[0], color[1], color[2]}, 8.0)
 	orbMaterial.Unlit = true
 	ecs.Set(worlds.Engine, entity, orbMaterial)
 

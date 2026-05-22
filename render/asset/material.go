@@ -31,6 +31,7 @@ type Material struct {
 	NormalScale       float32
 	OcclusionStrength float32
 	EmissiveFactor    [3]float32
+	EmissiveStrength  float32
 
 	AlphaMode   AlphaMode
 	AlphaCutoff float32
@@ -63,7 +64,20 @@ func DefaultMaterial() Material {
 		OcclusionStrength:      1.0,
 		AlphaCutoff:            0.5,
 		IOR:                    1.5,
+		EmissiveStrength:       1.0,
 	}
+}
+
+// EmissiveMaterial returns a default material whose base color is
+// the same as its emissive color, scaled by strength. Useful for
+// light-orb meshes that should glow at HDR intensities to drive
+// bloom and IBL contribution.
+func EmissiveMaterial(color [3]float32, strength float32) Material {
+	m := DefaultMaterial()
+	m.BaseColor = [4]float32{color[0], color[1], color[2], 1.0}
+	m.EmissiveFactor = color
+	m.EmissiveStrength = strength
+	return m
 }
 
 // AlbedoMaterial returns a fully-opaque, matte material tinted to
@@ -101,7 +115,10 @@ type MaterialGPU struct {
 	Unlit           uint32
 	IOR             float32
 
-	Pad1 [4]float32 // row 5 (reserved for future PBR extensions)
+	EmissiveStrength float32 // row 5
+	Pad1a            float32
+	Pad1b            float32
+	Pad1c            float32
 }
 
 // MaterialGPUSize is the byte stride of a single [MaterialGPU]
@@ -127,6 +144,10 @@ func (m Material) ToGPU() MaterialGPU {
 	if ior <= 0 {
 		ior = 1.5
 	}
+	emissiveStrength := m.EmissiveStrength
+	if emissiveStrength <= 0 {
+		emissiveStrength = 1.0
+	}
 	return MaterialGPU{
 		BaseColor:              m.BaseColor,
 		EmissiveFactor:         m.EmissiveFactor,
@@ -143,5 +164,6 @@ func (m Material) ToGPU() MaterialGPU {
 		AlphaCutoff:            m.AlphaCutoff,
 		Unlit:                  unlit,
 		IOR:                    ior,
+		EmissiveStrength:       emissiveStrength,
 	}
 }
