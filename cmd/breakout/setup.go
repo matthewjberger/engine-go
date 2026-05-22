@@ -137,7 +137,11 @@ func breakoutApp() *app.App {
 			if _, err := pass.AddMeshPass(renderer, arrays, registry, ibl, shadow); err != nil {
 				log.Fatal(err)
 			}
-			if _, err := pass.AddPostProcessPass(renderer); err != nil {
+			bloomPass, err := pass.AddBloomPass(renderer)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if _, err := pass.AddPostProcessPass(renderer, bloomPass); err != nil {
 				log.Fatal(err)
 			}
 			_, fxaaOutputID, err := pass.AddFxaaPass(renderer)

@@ -91,9 +91,10 @@ func AddFxaaPass(renderer *render.Renderer) (*render.Pass, render.ResourceID, er
 // AddPostProcessPass builds the HDR -> LDR tonemap pass. Reads
 // scene_color (HDR) and writes ldr_color (surface format). Must
 // run after every 3D pass that writes scene_color (sky / mesh /
-// grid / lines / outline) and before fxaa + UI passes.
-func AddPostProcessPass(renderer *render.Renderer) (*render.Pass, error) {
-	pass, err := NewPostProcessPass(renderer.Device, renderer.SurfaceFormat)
+// grid / lines / outline) and before fxaa + UI passes. Pass a
+// non-nil bloom pass to composite its mip-0 output before tonemap.
+func AddPostProcessPass(renderer *render.Renderer, bloom *render.Pass) (*render.Pass, error) {
+	pass, err := NewPostProcessPass(renderer.Device, renderer.SurfaceFormat, bloom)
 	if err != nil {
 		return nil, err
 	}

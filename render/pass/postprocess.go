@@ -14,10 +14,10 @@ import (
 var postprocessShader string
 
 type postprocessUniform struct {
-	Exposure float32
-	Pad0     float32
-	Pad1     float32
-	Pad2     float32
+	Exposure       float32
+	BloomIntensity float32
+	BloomEnabled   float32
+	Pad0           float32
 }
 
 type postprocessPassState struct {
@@ -26,6 +26,9 @@ type postprocessPassState struct {
 	sampler         *wgpu.Sampler
 	uniformBuffer   *wgpu.Buffer
 	bindGroup       *wgpu.BindGroup
+	bloom           *render.Pass
+	dummyTexture    *wgpu.Texture
+	dummyView       *wgpu.TextureView
 }
 
 // NewPostProcessPass builds the HDR -> LDR composition pass. The
@@ -38,8 +41,32 @@ type postprocessPassState struct {
 // Bind group is rebuilt via the [render.Pass.InvalidateBindGroups]
 // hook when the input view changes (resize, transient
 // reallocation, external view replacement).
-func NewPostProcessPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (*render.Pass, error) {
-	state := &postprocessPassState{}
+func NewPostProcessPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, bloom *render.Pass) (*render.Pass, error) {
+	state := &postprocessPassState{bloom: bloom}
+
+	dummyTex, err := device.CreateTexture(&wgpu.TextureDescriptor{
+		Label: "postprocess bloom dummy",
+		Size: wgpu.Extent3D{
+			Width:              1,
+			Height:             1,
+			DepthOrArrayLayers: 1,
+		},
+		MipLevelCount: 1,
+		SampleCount:   1,
+		Dimension:     wgpu.TextureDimension2D,
+		Format:        render.HdrFormat,
+		Usage:         wgpu.TextureUsageTextureBinding | wgpu.TextureUsageCopyDst,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("postprocess: dummy bloom texture: %w", err)
+	}
+	state.dummyTexture = dummyTex
+	dummyView, err := dummyTex.CreateView(nil)
+	if err != nil {
+		dummyTex.Release()
+		return nil, fmt.Errorf("postprocess: dummy bloom view: %w", err)
+	}
+	state.dummyView = dummyView
 
 	bindGroupLayout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "postprocess bind group layout",
@@ -61,6 +88,19 @@ func NewPostProcessPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (
 				Binding:    2,
 				Visibility: wgpu.ShaderStageFragment,
 				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform},
+			},
+			{
+				Binding:    3,
+				Visibility: wgpu.ShaderStageFragment,
+				Texture: wgpu.TextureBindingLayout{
+					SampleType:    wgpu.TextureSampleTypeFloat,
+					ViewDimension: wgpu.TextureViewDimension2D,
+				},
+			},
+			{
+				Binding:    4,
+				Visibility: wgpu.ShaderStageFragment,
+				Sampler:    wgpu.SamplerBindingLayout{Type: wgpu.SamplerBindingTypeFiltering},
 			},
 		},
 	})
@@ -158,7 +198,20 @@ func NewPostProcessPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (
 func postprocessPrepare(s any, context *render.PassContext) error {
 	state := s.(*postprocessPassState)
 
-	uniform := postprocessUniform{Exposure: 1.0}
+	bloomView := state.dummyView
+	bloomEnabled := float32(0.0)
+	if state.bloom != nil {
+		if view := BloomMipView(state.bloom); view != nil {
+			bloomView = view
+			bloomEnabled = 1.0
+		}
+	}
+
+	uniform := postprocessUniform{
+		Exposure:       1.0,
+		BloomIntensity: 0.04,
+		BloomEnabled:   bloomEnabled,
+	}
 	writeBuffer(context.Device, context.Queue, context.Encoder, state.uniformBuffer, 0, bytesOf(&uniform))
 
 	if state.bindGroup != nil {
@@ -177,6 +230,8 @@ func postprocessPrepare(s any, context *render.PassContext) error {
 			{Binding: 0, TextureView: inputView},
 			{Binding: 1, Sampler: state.sampler},
 			{Binding: 2, Buffer: state.uniformBuffer, Offset: 0, Size: uint64(unsafe.Sizeof(postprocessUniform{}))},
+			{Binding: 3, TextureView: bloomView},
+			{Binding: 4, Sampler: state.sampler},
 		},
 	})
 	if err != nil {
@@ -228,5 +283,11 @@ func postprocessRelease(s any) {
 	}
 	if state.bindGroupLayout != nil {
 		state.bindGroupLayout.Release()
+	}
+	if state.dummyView != nil {
+		state.dummyView.Release()
+	}
+	if state.dummyTexture != nil {
+		state.dummyTexture.Release()
 	}
 }
