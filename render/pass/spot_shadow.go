@@ -388,53 +388,11 @@ func spotShadowExecute(s any, context *render.PassContext) error {
 		return nil
 	}
 
-	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
-
-	meshMask := ecs.MustMaskOf[asset.RenderMesh](context.World) |
-		ecs.MustMaskOf[asset.Material](context.World) |
-		ecs.MustMaskOf[transform.GlobalTransform](context.World)
-	type meshDraw struct {
-		mesh  asset.MeshHandle
-		index uint32
-	}
-	var meshes []meshDraw
-	var transforms []mgl32.Mat4
-	context.World.ForEach(meshMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
-		rm, _ := ecs.Get[asset.RenderMesh](context.World, entity)
-		global, _ := ecs.Get[transform.GlobalTransform](context.World, entity)
-		meshes = append(meshes, meshDraw{mesh: rm.Mesh, index: uint32(len(transforms))})
-		transforms = append(transforms, global.Matrix)
-	})
-	if len(meshes) == 0 {
+	meshState, ok := findMeshPassState(context.World)
+	if !ok {
 		return nil
 	}
-
-	modelBuffer, err := context.Device.CreateBuffer(&wgpu.BufferDescriptor{
-		Label: "spot shadow models",
-		Size:  uint64(len(transforms)) * uint64(unsafe.Sizeof(mgl32.Mat4{})),
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst,
-	})
-	if err != nil {
-		return fmt.Errorf("spot shadow: models: %w", err)
-	}
-	defer modelBuffer.Release()
-	raw := make([]float32, 0, len(transforms)*16)
-	for _, matrix := range transforms {
-		raw = append(raw, matrix[:]...)
-	}
-	writeBuffer(context.Device, context.Queue, context.Encoder, modelBuffer, 0, float32SliceBytes(raw))
-
-	handleBg, err := context.Device.CreateBindGroup(&wgpu.BindGroupDescriptor{
-		Label:  "spot shadow handle bg",
-		Layout: state.handleBgLayout,
-		Entries: []wgpu.BindGroupEntry{
-			{Binding: 0, Buffer: modelBuffer, Offset: 0, Size: uint64(len(transforms)) * uint64(unsafe.Sizeof(mgl32.Mat4{}))},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("spot shadow: handle bg: %w", err)
-	}
-	defer handleBg.Release()
+	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
 
 	for index := uint32(0); index < shadow.ActiveCount; index++ {
 		slotX := (index % SpotShadowSlotsPerRow) * SpotShadowSlotSize
@@ -458,14 +416,21 @@ func spotShadowExecute(s any, context *render.PassContext) error {
 		passEnc.SetViewport(float32(slotX), float32(slotY), float32(SpotShadowSlotSize), float32(SpotShadowSlotSize), 0, 1)
 		passEnc.SetScissorRect(slotX, slotY, SpotShadowSlotSize, SpotShadowSlotSize)
 		passEnc.SetBindGroup(0, state.slotBgs[index], nil)
-		passEnc.SetBindGroup(1, handleBg, nil)
-		for _, draw := range meshes {
-			mesh, ok := assets.Lookup(draw.mesh)
-			if !ok || mesh == nil {
+		for _, handle := range meshState.sortedHandles {
+			bucket := meshState.perHandle[handle]
+			entry, ok := assets.Lookup(handle)
+			if !ok {
 				continue
 			}
-			passEnc.SetVertexBuffer(0, mesh.Vertices, 0, wgpu.WholeSize)
-			passEnc.Draw(mesh.VertexCount, 1, 0, draw.index)
+			shadowBg, err := ensureShadowHandleBindGroup(bucket, context.Device, state.handleBgLayout)
+			if err != nil {
+				passEnc.End()
+				passEnc.Release()
+				return err
+			}
+			passEnc.SetBindGroup(1, shadowBg, nil)
+			passEnc.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
+			passEnc.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
 		}
 		passEnc.End()
 		passEnc.Release()
