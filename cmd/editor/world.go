@@ -174,10 +174,10 @@ func spawnLightOrbs(worlds app.Worlds, orbMesh asset.MeshHandle) {
 		Range     float32
 	}
 	points := []point{
-		{Name: "Red Orb", Position: transform.Vec3{2.0, 0.4, 0}, Color: transform.Vec3{1.0, 0.1, 0.1}, Intensity: 8, Range: 3.0},
-		{Name: "Green Orb", Position: transform.Vec3{-2.0, 0.4, 0}, Color: transform.Vec3{0.1, 1.0, 0.2}, Intensity: 8, Range: 3.0},
-		{Name: "Blue Orb", Position: transform.Vec3{0, 0.4, 2.0}, Color: transform.Vec3{0.1, 0.3, 1.0}, Intensity: 8, Range: 3.0},
-		{Name: "Magenta Orb", Position: transform.Vec3{0, 0.4, -2.0}, Color: transform.Vec3{1.0, 0.2, 1.0}, Intensity: 8, Range: 3.0},
+		{Name: "Red Orb", Position: transform.Vec3{2.0, 0.4, 0}, Color: transform.Vec3{1.0, 0.1, 0.1}, Intensity: 60, Range: 8.0},
+		{Name: "Green Orb", Position: transform.Vec3{-2.0, 0.4, 0}, Color: transform.Vec3{0.1, 1.0, 0.2}, Intensity: 60, Range: 8.0},
+		{Name: "Blue Orb", Position: transform.Vec3{0, 0.4, 2.0}, Color: transform.Vec3{0.1, 0.3, 1.0}, Intensity: 60, Range: 8.0},
+		{Name: "Magenta Orb", Position: transform.Vec3{0, 0.4, -2.0}, Color: transform.Vec3{1.0, 0.2, 1.0}, Intensity: 60, Range: 8.0},
 	}
 	for _, p := range points {
 		spawnPointOrb(worlds, orbMesh, p.Name, p.Position, scale, p.Color, p.Intensity, p.Range)
