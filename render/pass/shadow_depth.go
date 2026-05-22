@@ -385,20 +385,14 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 	return nil
 }
 
-// scaledCascadeSplits multiplies the default cascade splits by the
-// camera's near ratio so a zoomed-in scene (smaller near) still
-// gets useful cascade boundaries.
-func scaledCascadeSplits(cameraNear float32) [NumShadowCascades]float32 {
-	const referenceNear float32 = 0.01
-	scale := cameraNear / referenceNear
-	if scale < 1.0 {
-		scale = 1.0
-	}
-	var splits [NumShadowCascades]float32
-	for index := range splits {
-		splits[index] = CascadeSplitDistances[index] * scale
-	}
-	return splits
+// scaledCascadeSplits returns the cascade split distances. Kept as
+// a function (not a constant) so a future per-camera scaling can
+// fold in without touching call sites; the reference engine's
+// camera-near-ratio scaling assumes a 0.01 reference near, which
+// doesn't match indigo's 0.1 default and was making cascade 0
+// span 100 world units instead of 10.
+func scaledCascadeSplits(_ float32) [NumShadowCascades]float32 {
+	return CascadeSplitDistances
 }
 
 // fitLightFrustum builds a light view-projection that wraps the
