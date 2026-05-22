@@ -364,20 +364,30 @@ func collectOpaqueQuads(uiWorld *ecs.World) []opaqueQuad {
 // textCovered reports whether textBounds (at textZ) is fully covered
 // by some opaque quad with a strictly higher Z. Used by the text
 // pass to skip glyphs that would render through a popup background.
+// "Covered" means the text rect intersects the opaque quad at all
+// (any overlap) — text whose glyphs spill a few pixels past the
+// popup's edge still needs to be skipped, otherwise letters leak
+// out from behind the popup. The popup's own item labels share its
+// Z and survive the strictly-higher-Z constraint, so they're never
+// hidden by their own backgrounds.
 func textCovered(textBounds ui.Rect, textZ int32, occluders []opaqueQuad) bool {
 	for i := range occluders {
 		q := &occluders[i]
 		if q.z <= textZ {
 			continue
 		}
-		if textBounds.X >= q.rect.X &&
-			textBounds.Y >= q.rect.Y &&
-			textBounds.X+textBounds.Width <= q.rect.X+q.rect.Width &&
-			textBounds.Y+textBounds.Height <= q.rect.Y+q.rect.Height {
+		if rectsOverlap(textBounds, q.rect) {
 			return true
 		}
 	}
 	return false
+}
+
+func rectsOverlap(a, b ui.Rect) bool {
+	return a.X < b.X+b.Width &&
+		a.X+a.Width > b.X &&
+		a.Y < b.Y+b.Height &&
+		a.Y+a.Height > b.Y
 }
 
 func sortTextBatches(scratch []uiTextGlyphInstance, batches []textGlyphBatch) {

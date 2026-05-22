@@ -3,6 +3,11 @@
 package main
 
 import (
+	"bytes"
+	"log"
+	"path/filepath"
+	"strings"
+	"sync"
 	"syscall/js"
 	"time"
 
@@ -11,10 +16,41 @@ import (
 	"indigo/app"
 	"indigo/ecs"
 	"indigo/render"
+	"indigo/render/asset"
 	"indigo/render/pass"
 	"indigo/transform"
+	"indigo/ui"
 	"indigo/window"
 )
+
+// loadGltfBytes parses a glTF / glb buffer (the bytes dropped on
+// the canvas via [installCanvasDropListener]) and routes through
+// the shared [spawnLoadedSceneNamed] helper so wasm drops produce
+// the same entity tree shape as the native filesystem path.
+func loadGltfBytes(engine *ecs.World, renderer *render.Renderer, label string, data []byte) ([]ecs.Entity, error) {
+	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
+	cache := ecs.MustResource[asset.TextureCacheResource](engine).Cache
+	scene, err := asset.LoadGltfReader(renderer.Device, renderer.Queue, assets, cache, label, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return spawnLoadedSceneNamed(engine, scene, label)
+}
+
+// pendingDrops is the queue the canvas drop callback writes into
+// after asynchronously reading dropped files. The frame loop drains
+// it at the top of each frame and feeds the bytes into the standard
+// glTF spawn path. Mutex-guarded because the JS drop callback fires
+// off the main Go goroutine.
+var pendingDrops struct {
+	sync.Mutex
+	files []pendingDrop
+}
+
+type pendingDrop struct {
+	name string
+	data []byte
+}
 
 func main() {
 	setupLogging()
@@ -45,6 +81,7 @@ func main() {
 
 	worlds, demo := buildWorlds(renderer)
 	installCanvasInputListeners(canvas, worlds.Engine)
+	installCanvasDropListener(canvas)
 
 	resizeFunc := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		entries := args[0]
@@ -84,6 +121,7 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		drainPendingDrops(worlds, renderer)
 		syncUiPointer(worlds)
 		ctx := newHudContext(worlds)
 		ctx.refreshHudLayout()
@@ -247,5 +285,94 @@ func setMouseButton(engine *ecs.World, button int, pressed bool) {
 		input.MiddleDown = pressed
 	case 2:
 		input.RightDown = pressed
+	}
+}
+
+// installCanvasDropListener wires the canvas's dragover + drop DOM
+// events to the [pendingDrops] queue. dragover.preventDefault() is
+// required to convince the browser the canvas accepts drops;
+// without it the drop event never fires and the browser navigates
+// to the file instead. drop reads each file's bytes asynchronously
+// via File.arrayBuffer() and pushes (name, []byte) onto the queue,
+// which [drainPendingDrops] consumes at the top of each frame.
+func installCanvasDropListener(canvas js.Value) {
+	canvas.Call("addEventListener", "dragover", js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if len(args) > 0 {
+			args[0].Call("preventDefault")
+		}
+		return nil
+	}), map[string]any{"passive": false})
+
+	canvas.Call("addEventListener", "drop", js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if len(args) == 0 {
+			return nil
+		}
+		event := args[0]
+		event.Call("preventDefault")
+		event.Call("stopPropagation")
+		dt := event.Get("dataTransfer")
+		if !dt.Truthy() {
+			return nil
+		}
+		files := dt.Get("files")
+		if !files.Truthy() {
+			return nil
+		}
+		count := files.Length()
+		for index := 0; index < count; index++ {
+			readDroppedFile(files.Index(index))
+		}
+		return nil
+	}), map[string]any{"passive": false})
+}
+
+// readDroppedFile asynchronously reads a single DOM File's bytes
+// via File.arrayBuffer() and appends a [pendingDrop] entry to the
+// queue when the promise resolves. The closures are released after
+// they fire since each file load is a one-shot.
+func readDroppedFile(file js.Value) {
+	name := file.Get("name").String()
+	promise := file.Call("arrayBuffer")
+	var thenFn js.Func
+	thenFn = js.FuncOf(func(_ js.Value, thenArgs []js.Value) any {
+		defer thenFn.Release()
+		if len(thenArgs) == 0 {
+			return nil
+		}
+		buffer := thenArgs[0]
+		uint8Array := js.Global().Get("Uint8Array").New(buffer)
+		data := make([]byte, uint8Array.Length())
+		js.CopyBytesToGo(data, uint8Array)
+		pendingDrops.Lock()
+		pendingDrops.files = append(pendingDrops.files, pendingDrop{name: name, data: data})
+		pendingDrops.Unlock()
+		return nil
+	})
+	promise.Call("then", thenFn)
+}
+
+// drainPendingDrops pops every entry the canvas drop callback has
+// queued so far and feeds the bytes into [loadGltfBytes]. Runs at
+// the top of each frame so dropped files become visible the same
+// frame the file finishes reading. Non-glTF / non-glb extensions
+// are logged and skipped.
+func drainPendingDrops(worlds app.Worlds, renderer *render.Renderer) {
+	pendingDrops.Lock()
+	drops := pendingDrops.files
+	pendingDrops.files = nil
+	pendingDrops.Unlock()
+	for _, drop := range drops {
+		ext := strings.ToLower(filepath.Ext(drop.name))
+		if ext != ".gltf" && ext != ".glb" {
+			log.Printf("skip drop: unsupported extension %q", drop.name)
+			continue
+		}
+		if _, err := loadGltfBytes(worlds.Engine, renderer, drop.name, drop.data); err != nil {
+			log.Printf("gltf load failed: %v", err)
+			continue
+		}
+		if worlds.UI != nil {
+			ui.MarkLayoutDirty(worlds.UI)
+		}
 	}
 }

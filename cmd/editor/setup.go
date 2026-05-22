@@ -172,12 +172,9 @@ func loadDefaultGltf(engine *ecs.World, renderer *render.Renderer, path string) 
 	}
 }
 
-// loadGltfInto loads path via [asset.LoadGltfFile], spawns its
-// nodes via [asset.SpawnLoadedScene], and attaches an [app.Name]
-// component to every spawned entity (falling back to
-// "<basename>/node_<index>" when the glTF node has no name).
-// Returns the spawned entities in node-index order so the caller
-// can attach further per-entity state (selection, etc.).
+// loadGltfInto loads path via [asset.LoadGltfFile] and forwards to
+// the bytes-based spawn helper. Native-only — wasm calls
+// [loadGltfBytes] directly with bytes fetched from a drop event.
 func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]ecs.Entity, error) {
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	cache := ecs.MustResource[asset.TextureCacheResource](engine).Cache
@@ -185,19 +182,23 @@ func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]
 	if err != nil {
 		return nil, err
 	}
+	return spawnLoadedSceneNamed(engine, scene, filepath.Base(path))
+}
+
+func spawnLoadedSceneNamed(engine *ecs.World, scene *asset.LoadedScene, label string) ([]ecs.Entity, error) {
 	entities := asset.SpawnLoadedScene(engine, scene)
-	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	baseName := strings.TrimSuffix(label, filepath.Ext(label))
 	nameMask := ecs.MustMaskOf[app.Name](engine)
 	for i, e := range entities {
-		label := scene.Nodes[i].Name
-		if label == "" {
-			label = fmt.Sprintf("%s/node_%d", baseName, i)
+		name := scene.Nodes[i].Name
+		if name == "" {
+			name = fmt.Sprintf("%s/node_%d", baseName, i)
 		}
 		engine.AddComponents(e, nameMask)
-		ecs.Set(engine, e, app.Name{Value: label})
+		ecs.Set(engine, e, app.Name{Value: name})
 	}
 	log.Printf("gltf loaded: %s (%d nodes, %d meshes, %d materials, %d animations)",
-		path, len(scene.Nodes), len(scene.Meshes), len(scene.Materials), len(scene.Animations))
+		label, len(scene.Nodes), len(scene.Meshes), len(scene.Materials), len(scene.Animations))
 	if len(scene.Roots) > 0 {
 		applyEntitySelection(engine, entities[scene.Roots[0]])
 	}
