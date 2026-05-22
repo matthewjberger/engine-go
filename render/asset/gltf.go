@@ -111,7 +111,12 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 	if err != nil {
 		return nil, fmt.Errorf("gltf %q: read: %w", label, err)
 	}
-	dec := gltf.NewDecoder(bytes.NewReader(data))
+	var dec *gltf.Decoder
+	if opts.BaseDir != "" {
+		dec = gltf.NewDecoderFS(bytes.NewReader(data), os.DirFS(opts.BaseDir))
+	} else {
+		dec = gltf.NewDecoder(bytes.NewReader(data))
+	}
 	doc := new(gltf.Document)
 	if err := dec.Decode(doc); err != nil {
 		return nil, fmt.Errorf("gltf %q: decode: %w", label, err)
