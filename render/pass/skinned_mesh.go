@@ -26,7 +26,7 @@ type skinnedUniforms struct {
 type skinnedMaterial struct {
 	BaseColor [4]float32
 	BaseLayer uint32
-	Pad0      uint32
+	AlphaMode uint32
 	Pad1      uint32
 	Pad2      uint32
 }
@@ -266,26 +266,7 @@ func skinnedMeshPrepare(s any, context *render.PassContext) error {
 	}
 
 	uniforms := defaultSkinnedUniforms()
-	lightMask := ecs.MustMaskOf[render.Light](context.World)
-	context.World.ForEach(lightMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
-		light, ok := ecs.Get[render.Light](context.World, entity)
-		if !ok || light.Type != render.LightTypeDirectional {
-			return
-		}
-		intensity := light.Intensity
-		if intensity <= 0 {
-			intensity = 1.0
-		}
-		color := mgl32.Vec3{light.Color[0] * intensity, light.Color[1] * intensity, light.Color[2] * intensity}
-		uniforms.LightColor = mgl32.Vec4{color[0], color[1], color[2], 1}
-		if global, ok := ecs.Get[transform.GlobalTransform](context.World, entity); ok {
-			forward := mgl32.Vec3{-global.Matrix[8], -global.Matrix[9], -global.Matrix[10]}
-			if forward.Len() > 1e-4 {
-				forward = forward.Normalize()
-				uniforms.LightDirection = mgl32.Vec4{forward[0], forward[1], forward[2], 0}
-			}
-		}
-	})
+	applyDirectionalToSkinned(context.World, &uniforms)
 	writeBuffer(context.Device, context.Queue, context.Encoder, state.uniformBuffer, 0, bytesOf(&uniforms))
 
 	if state.globalGroup == nil {
@@ -349,6 +330,7 @@ func skinnedMeshPrepare(s any, context *render.PassContext) error {
 		if material, ok := ecs.Get[asset.Material](context.World, entity); ok && material != nil {
 			matData.BaseColor = material.BaseColor
 			matData.BaseLayer = material.BaseColorLayer
+			matData.AlphaMode = uint32(material.ToGPU().AlphaMode)
 		}
 		writeBuffer(context.Device, context.Queue, context.Encoder, buffers.materialBuffer, 0, bytesOf(&matData))
 
@@ -505,6 +487,32 @@ func ensureSkinnedBuffers(buffers *skinnedHandleBuffers, device *wgpu.Device) er
 		buffers.bindGroup = nil
 	}
 	return nil
+}
+
+// applyDirectionalToSkinned folds the first directional light's
+// color (premultiplied by intensity) and -Z forward direction into
+// the skinned lighting uniform. Shared by the opaque + OIT skinned
+// passes.
+func applyDirectionalToSkinned(world *ecs.World, uniforms *skinnedUniforms) {
+	lightMask := ecs.MustMaskOf[render.Light](world)
+	world.ForEach(lightMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
+		light, ok := ecs.Get[render.Light](world, entity)
+		if !ok || light.Type != render.LightTypeDirectional {
+			return
+		}
+		intensity := light.Intensity
+		if intensity <= 0 {
+			intensity = 1.0
+		}
+		uniforms.LightColor = mgl32.Vec4{light.Color[0] * intensity, light.Color[1] * intensity, light.Color[2] * intensity, 1}
+		if global, ok := ecs.Get[transform.GlobalTransform](world, entity); ok {
+			forward := mgl32.Vec3{-global.Matrix[8], -global.Matrix[9], -global.Matrix[10]}
+			if forward.Len() > 1e-4 {
+				forward = forward.Normalize()
+				uniforms.LightDirection = mgl32.Vec4{forward[0], forward[1], forward[2], 0}
+			}
+		}
+	})
 }
 
 func defaultSkinnedUniforms() skinnedUniforms {

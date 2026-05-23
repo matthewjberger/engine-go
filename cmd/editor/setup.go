@@ -154,6 +154,9 @@ func editorApp() *app.App {
 			if _, err := pass.AddOitMeshPass(renderer); err != nil {
 				log.Fatal(err)
 			}
+			if _, err := pass.AddSkinnedMeshOitPass(renderer); err != nil {
+				log.Fatal(err)
+			}
 			if _, err := pass.AddOitCompositePass(renderer); err != nil {
 				log.Fatal(err)
 			}

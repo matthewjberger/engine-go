@@ -58,6 +58,7 @@ func spawnSkinnedDemo(worlds app.Worlds) {
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.LocalTransformDirty](worlds.Engine) |
 		ecs.MustMaskOf[asset.SkinnedMesh](worlds.Engine) |
+		ecs.MustMaskOf[asset.Material](worlds.Engine) |
 		ecs.MustMaskOf[app.Name](worlds.Engine)
 	entity := worlds.Engine.Spawn(entityMask)
 	local := transform.IdentityLocalTransform()
@@ -65,6 +66,13 @@ func spawnSkinnedDemo(worlds app.Worlds) {
 	ecs.Set(worlds.Engine, entity, local)
 	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, entity, asset.SkinnedMesh{Mesh: handle, Skin: skin})
+	// Blend material so the bend plane exercises the skinned OIT
+	// path: a translucent rig validates weighted-blended output
+	// driven by the shared joint-matrix buffer.
+	mat := asset.DefaultMaterial()
+	mat.BaseColor = [4]float32{0.4, 0.7, 1.0, 0.55}
+	mat.AlphaMode = asset.AlphaModeBlend
+	ecs.Set(worlds.Engine, entity, mat)
 	ecs.Set(worlds.Engine, entity, app.Name{Value: "Skinned Plane"})
 }
 

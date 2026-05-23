@@ -1,16 +1,18 @@
-// Skinned mesh shader. Vertex stage blends position + normal by
-// up to 4 joint matrices per vertex (matching the reference
-// engine's per-influence accumulation form); fragment stage
-// samples the material's base color texture from the shared
-// material texture array and shades with a basic Lambert +
-// ambient model. Output lands in scene_color so the postprocess
-// chain (SSAO, bloom, tonemap) still applies.
+// Weighted-blended OIT for transparent skinned meshes. Vertex
+// stage blends position + normal by the entity's joint slice of
+// the shared joint-matrix buffer; fragment stage shades with the
+// same Lambert + ambient model as the opaque skinned pass and
+// writes accum (One+One) / reveal (Zero+OneMinusSrc) / entity_id.
 
-struct ViewProj {
+struct ViewProjOit {
     view_proj: mat4x4<f32>,
+    z_scale:   f32,
+    _pad0:     f32,
+    _pad1:     f32,
+    _pad2:     f32,
 };
 
-@group(0) @binding(0) var<uniform> view_proj_uniform: ViewProj;
+@group(0) @binding(0) var<uniform> view_proj_uniform: ViewProjOit;
 
 struct SkinnedUniforms {
     light_direction: vec4<f32>,
@@ -54,27 +56,22 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
-    @location(1) color: vec4<f32>,
-    @location(2) uv: vec2<f32>,
+    @location(1) color:        vec4<f32>,
+    @location(2) uv:           vec2<f32>,
     @location(3) @interpolate(flat) entity_id: u32,
+    @location(4) view_z:       f32,
 };
 
-struct FragmentOutput {
-    @location(0) color:       vec4<f32>,
-    @location(1) entity_id:   u32,
-    @location(2) view_normal: vec4<f32>,
+struct OitOutput {
+    @location(0) accum:     vec4<f32>,
+    @location(1) reveal:    f32,
+    @location(2) entity_id: u32,
 };
 
 const NO_TEXTURE_LAYER: u32 = 0xFFFFFFFFu;
 
 @vertex
 fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32) -> VertexOutput {
-    // Per glTF spec: when a node has a skin, the node's own
-    // transform is ignored -- joint matrices already encode every
-    // bind-pose-to-world transformation. Per-influence
-    // accumulation form (weight * (M * pos) summed over 4) is
-    // mathematically equivalent to (sum(weight * M)) * pos but
-    // plays nicer with non-affine joint matrices.
     let position = vec4<f32>(input.position.xyz, 1.0);
     let normal = input.normal.xyz;
     let joint_offset = per_entity[instance_index].joint_offset;
@@ -88,8 +85,7 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
             let transformed_pos = joint_matrix * position;
             skinned_position = skinned_position + transformed_pos.xyz * joint_weight;
             let normal_matrix = mat3x3<f32>(joint_matrix[0].xyz, joint_matrix[1].xyz, joint_matrix[2].xyz);
-            let transformed_normal = normal_matrix * normal;
-            skinned_normal = skinned_normal + transformed_normal * joint_weight;
+            skinned_normal = skinned_normal + (normal_matrix * normal) * joint_weight;
         }
     }
     if (length(skinned_normal) < 0.0001) {
@@ -98,34 +94,47 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
         skinned_normal = normalize(skinned_normal);
     }
 
+    let clip = view_proj_uniform.view_proj * vec4<f32>(skinned_position, 1.0);
     var out: VertexOutput;
-    out.clip_position = view_proj_uniform.view_proj * vec4<f32>(skinned_position, 1.0);
+    out.clip_position = clip;
     out.world_normal = skinned_normal;
     out.color = input.color;
     out.uv = input.uv.xy;
     out.entity_id = per_entity[instance_index].entity_id;
+    out.view_z = max(clip.w, 0.0001);
     return out;
 }
 
+fn oit_weight(view_z: f32, a: f32) -> f32 {
+    let z_scale = max(view_proj_uniform.z_scale, 1.0);
+    let z_ratio = view_z / z_scale;
+    return a * clamp(0.03 / (1e-5 + pow(z_ratio, 4.0)), 1e-2, 3e3);
+}
+
 @fragment
-fn fragment_main(in: VertexOutput) -> FragmentOutput {
-    if (material.alpha_mode == 2u) {
+fn fragment_main(in: VertexOutput) -> OitOutput {
+    if (material.alpha_mode != 2u) {
         discard;
     }
-    var base_color = material.base_color;
+    var base_color = material.base_color * in.color;
     if (material.base_layer != NO_TEXTURE_LAYER) {
         let layer = i32(material.base_layer & 0xFFFFu);
-        let sampled = textureSample(material_srgb_array, material_sampler, in.uv, layer);
-        base_color = base_color * sampled;
+        base_color = base_color * textureSample(material_srgb_array, material_sampler, in.uv, layer);
     }
-    let albedo = base_color.rgb * in.color.rgb;
+    let alpha = base_color.a;
+    if (alpha < 0.0039) {
+        discard;
+    }
     let normal = normalize(in.world_normal);
     let light_dir = -normalize(skinned_uniforms.light_direction.xyz);
     let lambert = max(dot(normal, light_dir), 0.0);
     let lit = skinned_uniforms.ambient_color.rgb + skinned_uniforms.light_color.rgb * lambert;
-    var out: FragmentOutput;
-    out.color = vec4<f32>(albedo * lit, base_color.a * in.color.a);
+    let albedo = base_color.rgb * lit;
+
+    let w = oit_weight(in.view_z, alpha);
+    var out: OitOutput;
+    out.accum = vec4<f32>(albedo * alpha, alpha) * w;
+    out.reveal = alpha;
     out.entity_id = in.entity_id;
-    out.view_normal = vec4<f32>(normal, 1.0);
     return out;
 }
