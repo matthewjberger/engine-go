@@ -291,5 +291,6 @@ func spawnDemoCamera(worlds app.Worlds) {
 	})
 	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, entity, render.CameraMarker{})
+	spawnCameraPickProxy(worlds.Engine, entity)
 	ecs.Set(worlds.Engine, entity, app.Name{Value: "Camera"})
 }

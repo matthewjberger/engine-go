@@ -88,6 +88,9 @@ func applySelection(engine *ecs.World, pickedID uint32) {
 		resetPickCycle(engine)
 		return
 	}
+	if proxy, ok := ecs.Get[render.PickProxy](engine, leaf); ok && proxy != nil {
+		leaf = proxy.Target
+	}
 
 	target := resolveCycleTarget(engine, state, leaf)
 	if state.ShiftHeld {

@@ -223,41 +223,7 @@ func meshPrepare(s any, context *render.PassContext) error {
 		}
 	}
 
-	if len(state.sortedHandles) > 0 {
-		resetPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
-		resetPass.SetBindGroup(0, state.meshCulling.frameBindGroup, nil)
-		resetPass.SetPipeline(state.meshCulling.resetPipeline)
-		for _, handle := range state.sortedHandles {
-			bucket := state.perHandle[handle]
-			if bucket.cullBindGroup == nil {
-				continue
-			}
-			resetPass.SetBindGroup(1, bucket.cullBindGroup, nil)
-			resetPass.DispatchWorkgroups(1, 1, 1)
-		}
-		resetPass.End()
-		resetPass.Release()
-
-		cullPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
-		cullPass.SetBindGroup(0, state.meshCulling.frameBindGroup, nil)
-		cullPass.SetPipeline(state.meshCulling.cullPipeline)
-		for _, handle := range state.sortedHandles {
-			bucket := state.perHandle[handle]
-			if bucket.cullBindGroup == nil {
-				continue
-			}
-			count := uint32(len(bucket.slotEntity))
-			groups := (count + 63) / 64
-			if groups == 0 {
-				continue
-			}
-			cullPass.SetBindGroup(1, bucket.cullBindGroup, nil)
-			cullPass.DispatchWorkgroups(groups, 1, 1)
-		}
-		cullPass.End()
-		cullPass.Release()
-	}
-
+	dispatchCullPasses(state, context)
 	return nil
 }
 

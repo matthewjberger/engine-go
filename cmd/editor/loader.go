@@ -129,5 +129,6 @@ func attachSceneCameras(engine *ecs.World, scene *asset.LoadedScene, entities []
 		}
 		engine.AddComponents(entities[i], camMask)
 		ecs.Set(engine, entities[i], render.CameraMarker{})
+		spawnCameraPickProxy(engine, entities[i])
 	}
 }
