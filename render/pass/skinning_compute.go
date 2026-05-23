@@ -19,8 +19,6 @@ import (
 //go:embed skinning_compute.wgsl
 var skinningComputeShader string
 
-// GpuSkinData is the per-unique-skin descriptor the compute reads
-// to locate a joint's inputs / output in the shared buffers.
 type GpuSkinData struct {
 	JointCount      uint32
 	BaseBoneIndex   uint32
@@ -28,11 +26,6 @@ type GpuSkinData struct {
 	BaseOutputIndex uint32
 }
 
-// SkinnedInstance is the per-instance record the skinned render +
-// shadow shaders read by instance index: base color + texture
-// layer + alpha mode for shading, the entity id for picking, and
-// the joint offset selecting this instance's slice of the shared
-// joint-matrix buffer.
 type SkinnedInstance struct {
 	BaseColor   [4]float32
 	EntityID    uint32
@@ -41,23 +34,12 @@ type SkinnedInstance struct {
 	AlphaMode   uint32
 }
 
-// SkinnedDrawGroup is a contiguous run of same-mesh instances in
-// the instance buffer, collapsed into one instanced draw.
 type SkinnedDrawGroup struct {
 	Mesh          asset.SkinnedMeshHandle
 	FirstInstance uint32
 	Count         uint32
 }
 
-// SkinningCompute gathers every skinned entity's joints into shared
-// engine-wide buffers and runs one compute dispatch over all joints
-// to produce joint_matrices = bone_transform * inverse_bind. The
-// skinned mesh + shadow passes index their slice of the output via
-// a per-entity joint offset.
-//
-// Static data (skin_data, inverse_bind_matrices, the deduped joint
-// entity list) is rebuilt only when the set of skinned entities
-// changes. Bone transforms are re-collected every frame.
 type SkinningCompute struct {
 	pipeline  *wgpu.ComputePipeline
 	layout    *wgpu.BindGroupLayout
@@ -81,21 +63,15 @@ type SkinningCompute struct {
 	staticUploaded      bool
 
 	boneScratch []mgl32.Mat4
-	// lastBones holds the previous frame's collected bone matrices.
-	// When this frame's match bit-for-bit (and nothing reallocated),
-	// the bone upload + skinning dispatch are skipped: last frame's
-	// joint matrices remain valid for idle skeletons.
+
 	lastBones []mgl32.Mat4
 
-	// generation bumps whenever jointBuffer is reallocated, so the
-	// render passes that cache a bind group referencing it can
-	// detect staleness and rebuild.
 	generation uint64
 
-	// Per-instance batch: instances ordered by (transparency, mesh)
-	// so same-mesh runs are contiguous and collapse into draw
-	// groups. The render + shadow passes read instancesBuffer by
-	// instance index. instancesGen bumps on realloc.
+	boneGeneration uint64
+
+	animation *AnimationCompute
+
 	instances       []SkinnedInstance
 	instancesBuffer *wgpu.Buffer
 	instancesCap    int
@@ -104,38 +80,34 @@ type SkinningCompute struct {
 	blendGroups     []SkinnedDrawGroup
 }
 
-// Generation returns a counter that changes whenever the shared
-// joint-matrix buffer is reallocated. Render passes compare it to
-// drop bind groups that reference a freed buffer.
 func (sc *SkinningCompute) Generation() uint64 {
 	return sc.generation
 }
 
-// InstancesBuffer is the shared per-instance data buffer the
-// skinned render + shadow passes read by instance index.
 func (sc *SkinningCompute) InstancesBuffer() *wgpu.Buffer { return sc.instancesBuffer }
 
-// InstancesGeneration bumps when the instance buffer reallocates.
 func (sc *SkinningCompute) InstancesGeneration() uint64 { return sc.instancesGen }
 
-// OpaqueGroups returns the opaque same-mesh instanced draw runs.
 func (sc *SkinningCompute) OpaqueGroups() []SkinnedDrawGroup { return sc.opaqueGroups }
 
-// BlendGroups returns the blend-mode same-mesh instanced draw runs.
 func (sc *SkinningCompute) BlendGroups() []SkinnedDrawGroup { return sc.blendGroups }
 
-// SkinningComputeResource exposes the compute on the engine world
-// so the skinned mesh + shadow passes can read its output buffer
-// and per-entity joint offsets.
+func (sc *SkinningCompute) BoneBuffer() *wgpu.Buffer { return sc.boneBuffer }
+
+func (sc *SkinningCompute) BoneGeneration() uint64 { return sc.boneGeneration }
+
+func (sc *SkinningCompute) BaseBoneIndex(entity ecs.Entity) (uint32, bool) {
+	skinIndex, ok := sc.entitySkinIndices[entity]
+	if !ok || int(skinIndex) >= len(sc.skinData) {
+		return 0, false
+	}
+	return sc.skinData[skinIndex].BaseBoneIndex, true
+}
+
 type SkinningComputeResource struct {
 	Compute *SkinningCompute
 }
 
-// AddSkinningComputePass registers the skinning dispatch as a
-// render-graph pass and publishes the SkinningCompute as a world
-// resource. Register before the shadow + skinned mesh passes so
-// the joint-matrix buffer is populated before they sample it
-// (passes with no slot deps run in registration order).
 func AddSkinningComputePass(renderer *render.Renderer, sc *SkinningCompute) (*render.Pass, error) {
 	pass := &render.Pass{
 		Name:  "skinning_compute",
@@ -159,9 +131,6 @@ func AddSkinningComputePass(renderer *render.Renderer, sc *SkinningCompute) (*re
 
 const matrixBytes = uint64(unsafe.Sizeof(mgl32.Mat4{}))
 
-// NewSkinningCompute builds the compute pipeline + bind-group
-// layout. Shared buffers grow lazily on the first frame that has
-// skinned entities.
 func NewSkinningCompute(device *wgpu.Device) (*SkinningCompute, error) {
 	module, err := device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "skinning_compute shader",
@@ -207,14 +176,21 @@ func NewSkinningCompute(device *wgpu.Device) (*SkinningCompute, error) {
 		return nil, fmt.Errorf("skinning_compute: pipeline: %w", err)
 	}
 
+	animation, err := newAnimationCompute(device)
+	if err != nil {
+		pipeline.Release()
+		layout.Release()
+		return nil, err
+	}
+
 	return &SkinningCompute{
 		pipeline:          pipeline,
 		layout:            layout,
 		entitySkinIndices: make(map[ecs.Entity]uint32),
+		animation:         animation,
 	}, nil
 }
 
-// Release frees the pipeline, layout, and shared buffers.
 func (sc *SkinningCompute) Release() {
 	for _, buf := range []*wgpu.Buffer{sc.boneBuffer, sc.ibmBuffer, sc.skinDataBuffer, sc.jointBuffer} {
 		if buf != nil {
@@ -225,6 +201,10 @@ func (sc *SkinningCompute) Release() {
 	if sc.instancesBuffer != nil {
 		sc.instancesBuffer.Release()
 		sc.instancesBuffer = nil
+	}
+	if sc.animation != nil {
+		sc.animation.release()
+		sc.animation = nil
 	}
 	if sc.bindGroup != nil {
 		sc.bindGroup.Release()
@@ -240,15 +220,10 @@ func (sc *SkinningCompute) Release() {
 	}
 }
 
-// JointMatrixBuffer is the shared output buffer the render passes
-// bind. Nil until the first frame with skinned entities.
 func (sc *SkinningCompute) JointMatrixBuffer() *wgpu.Buffer {
 	return sc.jointBuffer
 }
 
-// JointOffset returns the base index into the joint-matrix buffer
-// for the entity's skin (its base_output_index). The render shader
-// reads joint_matrices[JointOffset + joint_index].
 func (sc *SkinningCompute) JointOffset(entity ecs.Entity) uint32 {
 	skinIndex, ok := sc.entitySkinIndices[entity]
 	if !ok || int(skinIndex) >= len(sc.skinData) {
@@ -257,8 +232,6 @@ func (sc *SkinningCompute) JointOffset(entity ecs.Entity) uint32 {
 	return sc.skinData[skinIndex].BaseOutputIndex
 }
 
-// needsRebuild reports whether the set of skinned entities changed
-// since the last static rebuild.
 func (sc *SkinningCompute) needsRebuild(world *ecs.World) bool {
 	if !sc.staticUploaded {
 		return true
@@ -282,10 +255,6 @@ func (sc *SkinningCompute) needsRebuild(world *ecs.World) bool {
 	return count != len(sc.skinnedEntityIDs)
 }
 
-// rebuildStaticData walks the skinned entities, dedupes joint
-// entities into a single bone array, dedupes identical rig configs
-// into shared skin_data + inverse-bind entries, and records each
-// entity's skin index. Mirrors nightshade's SkinningCache.
 func (sc *SkinningCompute) rebuildStaticData(world *ecs.World) {
 	sc.skinnedEntityIDs = sc.skinnedEntityIDs[:0]
 	sc.inverseBindMatrices = sc.inverseBindMatrices[:0]
@@ -360,9 +329,6 @@ func (sc *SkinningCompute) rebuildStaticData(world *ecs.World) {
 	sc.staticUploaded = true
 }
 
-// hashSkin produces a config hash from the joint entity ids + the
-// inverse bind matrices, so two entities sharing a rig collapse to
-// one skin_data entry.
 func hashSkin(skin *asset.Skin) uint64 {
 	hasher := fnv.New64a()
 	var scratch [8]byte
@@ -379,11 +345,6 @@ func hashSkin(skin *asset.Skin) uint64 {
 	return hasher.Sum64()
 }
 
-// buildInstances gathers a per-instance record for every skinned
-// entity, orders them by (opaque-before-blend, mesh) so same-mesh
-// runs are contiguous, and collapses each run into a draw group.
-// Each instance carries its own joint offset, so the ordering is
-// independent of the joint cache layout.
 func (sc *SkinningCompute) buildInstances(world *ecs.World) {
 	sc.instances = sc.instances[:0]
 	sc.opaqueGroups = sc.opaqueGroups[:0]
@@ -443,8 +404,6 @@ func (sc *SkinningCompute) buildInstances(world *ecs.World) {
 	}
 }
 
-// uploadInstances (re)allocates + fills the instance buffer; bumps
-// instancesGen on realloc so consumers rebuild bind groups.
 func (sc *SkinningCompute) uploadInstances(device *wgpu.Device, queue *wgpu.Queue, encoder *wgpu.CommandEncoder) {
 	count := len(sc.instances)
 	if count == 0 {
@@ -469,8 +428,6 @@ func (sc *SkinningCompute) uploadInstances(device *wgpu.Device, queue *wgpu.Queu
 	writeBuffer(device, queue, encoder, sc.instancesBuffer, 0, unsafe.Slice((*byte)(unsafe.Pointer(&sc.instances[0])), count*int(unsafe.Sizeof(SkinnedInstance{}))))
 }
 
-// collectBoneTransforms reads each deduped joint entity's current
-// world transform into the scratch slice (identity when missing).
 func (sc *SkinningCompute) collectBoneTransforms(world *ecs.World) {
 	if cap(sc.boneScratch) < len(sc.jointEntities) {
 		sc.boneScratch = make([]mgl32.Mat4, len(sc.jointEntities))
@@ -485,10 +442,6 @@ func (sc *SkinningCompute) collectBoneTransforms(world *ecs.World) {
 	}
 }
 
-// Prepare runs every frame from the skinned mesh pass: rebuilds
-// static data when the entity set changed, (re)allocates shared
-// buffers, uploads static + per-frame data. Returns false when
-// there are no skinned entities to dispatch.
 func (sc *SkinningCompute) Prepare(world *ecs.World, device *wgpu.Device, queue *wgpu.Queue, encoder *wgpu.CommandEncoder) bool {
 	rebuilt := false
 	if sc.needsRebuild(world) {
@@ -502,10 +455,6 @@ func (sc *SkinningCompute) Prepare(world *ecs.World, device *wgpu.Device, queue 
 		return false
 	}
 
-	// Rebuild the per-instance batch + draw groups every frame
-	// (materials / transparency can change) and upload it; the
-	// render + shadow passes read it regardless of whether the
-	// pose dispatch is skipped below.
 	sc.buildInstances(world)
 	sc.uploadInstances(device, queue, encoder)
 
@@ -541,20 +490,17 @@ func (sc *SkinningCompute) Prepare(world *ecs.World, device *wgpu.Device, queue 
 		sc.bindGroup = bg
 	}
 
-	// Skip the bone upload + dispatch when the pose is unchanged
-	// since last frame; the joint-matrix buffer still holds valid
-	// results. A realloc or static rebuild forces a refresh.
-	if !rebuilt && !grew && bonesEqual(sc.boneScratch, sc.lastBones) {
-		return false
-	}
-	if len(sc.boneScratch) > 0 {
+	bonesChanged := rebuilt || grew || !bonesEqual(sc.boneScratch, sc.lastBones)
+	if bonesChanged && len(sc.boneScratch) > 0 {
 		writeBuffer(device, queue, encoder, sc.boneBuffer, 0, matrixSliceBytes(sc.boneScratch))
+		sc.lastBones = append(sc.lastBones[:0], sc.boneScratch...)
 	}
-	sc.lastBones = append(sc.lastBones[:0], sc.boneScratch...)
-	return true
+
+	animActive := sc.animation.update(world, device, queue, encoder, sc)
+
+	return bonesChanged || animActive
 }
 
-// bonesEqual reports whether two bone-matrix slices are identical.
 func bonesEqual(a, b []mgl32.Mat4) bool {
 	if len(a) != len(b) {
 		return false
@@ -567,12 +513,11 @@ func bonesEqual(a, b []mgl32.Mat4) bool {
 	return true
 }
 
-// Dispatch encodes the single skinning dispatch. Prepare must have
-// returned true this frame.
 func (sc *SkinningCompute) Dispatch(encoder *wgpu.CommandEncoder) {
 	if sc.bindGroup == nil || sc.totalJoints == 0 {
 		return
 	}
+	sc.animation.dispatch(encoder)
 	pass := encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
 	pass.SetPipeline(sc.pipeline)
 	pass.SetBindGroup(0, sc.bindGroup, nil)
@@ -581,10 +526,6 @@ func (sc *SkinningCompute) Dispatch(encoder *wgpu.CommandEncoder) {
 	pass.Release()
 }
 
-// ensureBuffers grows the four shared buffers to fit the current
-// joint / skin counts. Returns true when any buffer was
-// reallocated (so callers re-upload static data + rebuild the
-// bind group).
 func (sc *SkinningCompute) ensureBuffers(device *wgpu.Device) bool {
 	grew := false
 	joints := int(sc.totalJoints)
@@ -594,6 +535,7 @@ func (sc *SkinningCompute) ensureBuffers(device *wgpu.Device) bool {
 	if sc.boneCap < joints {
 		sc.boneBuffer = recreateStorage(device, sc.boneBuffer, "skinning bones", uint64(joints)*matrixBytes)
 		sc.boneCap = joints
+		sc.boneGeneration++
 		grew = true
 	}
 	if sc.ibmCap < joints {

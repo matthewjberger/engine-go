@@ -10,18 +10,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// AnimationPlayer is the per-entity component that drives glTF
-// animation playback. One player owns a slice of [AnimationClip]
-// and a map from glTF node index to the spawned ECS entity for
-// that node (built by [SpawnLoadedScene] at load time). Each frame
-// [UpdateAnimationPlayers] advances Time by delta*Speed, samples
-// the current clip's channels at that time, and writes the
-// resulting translation / rotation / scale into the targeted
-// node's LocalTransform.
-//
-// Scope: a single clip plays at a time, looping is per-player,
-// stopping at the end is the alternative. No skinning or cross-
-// fade yet.
 type AnimationPlayer struct {
 	Clips             []AnimationClip
 	CurrentClip       int
@@ -32,9 +20,6 @@ type AnimationPlayer struct {
 	NodeIndexToEntity map[int]ecs.Entity
 }
 
-// NewAnimationPlayer returns a player that auto-selects clip 0 and
-// starts playing in a loop. Apps that want different startup state
-// can mutate the returned struct before attaching it.
 func NewAnimationPlayer(clips []AnimationClip, nodeIndexToEntity map[int]ecs.Entity) AnimationPlayer {
 	player := AnimationPlayer{
 		Clips:             clips,
@@ -50,17 +35,6 @@ func NewAnimationPlayer(clips []AnimationClip, nodeIndexToEntity map[int]ecs.Ent
 	return player
 }
 
-// UpdateAnimationPlayers is the per-frame system: advances every
-// AnimationPlayer's clock, samples the current clip's channels at
-// the new time, and writes the resulting TRS into each targeted
-// node's LocalTransform via [transform.AssignLocalTransform] (which
-// marks the node dirty so the propagation system rebuilds its
-// GlobalTransform next).
-//
-// Reads delta from the engine world's window timing resource. Put
-// this in the engine schedule BEFORE transform_propagation so the
-// world matrices that flow into the renderer reflect this frame's
-// sampled poses.
 func UpdateAnimationPlayers(world *ecs.World) {
 	w, ok := ecs.Resource[window.Window](world)
 	if !ok {
@@ -68,9 +42,18 @@ func UpdateAnimationPlayers(world *ecs.World) {
 	}
 	delta := w.Timing.DeltaSeconds
 
-	// Defer dirty marks until after the ForEach: transform.MarkDirty
-	// adds the LocalTransformDirty marker component, which is a
-	// structural mutation that ECS forbids during iteration.
+	jointSet := make(map[ecs.Entity]struct{}, 64)
+	skinMask := ecs.MustMaskOf[SkinnedMesh](world)
+	world.ForEach(skinMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
+		skinned, _ := ecs.Get[SkinnedMesh](world, entity)
+		if skinned == nil || skinned.Skin == nil {
+			return
+		}
+		for _, joint := range skinned.Skin.Joints {
+			jointSet[joint] = struct{}{}
+		}
+	})
+
 	var dirty []ecs.Entity
 	seen := make(map[ecs.Entity]struct{}, 16)
 
@@ -79,7 +62,7 @@ func UpdateAnimationPlayers(world *ecs.World) {
 		players, _ := ecs.Column[AnimationPlayer](world, table)
 		p := &players[index]
 		advancePlayer(p, delta)
-		applyPlayer(world, p, func(target ecs.Entity) {
+		applyPlayer(world, p, jointSet, func(target ecs.Entity) {
 			if _, ok := seen[target]; ok {
 				return
 			}
@@ -113,7 +96,7 @@ func advancePlayer(p *AnimationPlayer, delta float32) {
 	}
 }
 
-func applyPlayer(world *ecs.World, p *AnimationPlayer, markDirty func(ecs.Entity)) {
+func applyPlayer(world *ecs.World, p *AnimationPlayer, jointSet map[ecs.Entity]struct{}, markDirty func(ecs.Entity)) {
 	if p.CurrentClip < 0 || p.CurrentClip >= len(p.Clips) {
 		return
 	}
@@ -124,18 +107,15 @@ func applyPlayer(world *ecs.World, p *AnimationPlayer, markDirty func(ecs.Entity
 		if !ok {
 			continue
 		}
+		if _, isJoint := jointSet[target]; isJoint {
+			continue
+		}
 		if sampleChannelInto(world, target, channel, p.Time) {
 			markDirty(target)
 		}
 	}
 }
 
-// sampleChannelInto writes the sampled value into target's
-// LocalTransform and returns true when something actually changed
-// (so the caller can defer the [transform.MarkDirty] call until
-// after the outer ForEach completes — adding the dirty marker
-// component mid-iteration would trip the ECS structural-mutation
-// guard).
 func sampleChannelInto(world *ecs.World, target ecs.Entity, channel *AnimationChannel, t float32) bool {
 	keyA, keyB, factor := findKeyframe(channel.Sampler.Inputs, t)
 	local, ok := ecs.GetMut[transform.LocalTransform](world, target)
@@ -162,11 +142,6 @@ func sampleChannelInto(world *ecs.World, target ecs.Entity, channel *AnimationCh
 	return false
 }
 
-// findKeyframe returns the indices of the keyframes bracketing t
-// plus the interpolation factor in [0, 1]. Times must be sorted
-// ascending (glTF guarantees this for AnimationSampler input
-// accessors). Linear scan — clips have tens of keyframes typically,
-// a binary search isn't worth the complexity.
 func findKeyframe(times []float32, t float32) (int, int, float32) {
 	if len(times) == 0 {
 		return 0, 0, 0
@@ -178,16 +153,20 @@ func findKeyframe(times []float32, t float32) (int, int, float32) {
 	if t >= times[last] {
 		return last, last, 0
 	}
-	for i := 0; i < last; i++ {
-		if times[i+1] > t {
-			span := times[i+1] - times[i]
-			if span <= 0 {
-				return i, i, 0
-			}
-			return i, i + 1, (t - times[i]) / span
+	low, high := 0, last
+	for low < high {
+		mid := (low + high + 1) / 2
+		if times[mid] <= t {
+			low = mid
+		} else {
+			high = mid - 1
 		}
 	}
-	return last, last, 0
+	span := times[low+1] - times[low]
+	if span <= 0 {
+		return low, low, 0
+	}
+	return low, low + 1, (t - times[low]) / span
 }
 
 func sampleVec3(outputs [][3]float32, a, b int, factor float32, mode AnimationInterpolation) transform.Vec3 {
