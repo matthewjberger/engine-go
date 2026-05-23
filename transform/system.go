@@ -9,7 +9,7 @@ import (
 
 const MaxHierarchyDepth = 256
 
-type TransformState struct {
+type State struct {
 	ChildrenCache      map[ecs.Entity][]ecs.Entity
 	ChildrenCacheValid bool
 
@@ -19,8 +19,8 @@ type TransformState struct {
 	depthCapReported bool
 }
 
-func NewTransformState() TransformState {
-	return TransformState{
+func NewState() State {
+	return State{
 		ChildrenCache:      make(map[ecs.Entity][]ecs.Entity, 16),
 		ChildrenCacheValid: false,
 	}
@@ -28,7 +28,7 @@ func NewTransformState() TransformState {
 
 func MarkDirty(world *ecs.World, entity ecs.Entity) {
 	validateChildrenCache(world)
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	markEntity(world, entity)
 	stack := []ecs.Entity{entity}
 	for len(stack) > 0 {
@@ -60,14 +60,14 @@ func AssignLocalTransform(world *ecs.World, entity ecs.Entity, value LocalTransf
 }
 
 func UpdateParent(world *ecs.World, child ecs.Entity, parent ecs.Entity) {
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	state.ChildrenCacheValid = false
 	ecs.Set(world, child, Parent{Entity: parent})
 	MarkDirty(world, child)
 }
 
 func RemoveParent(world *ecs.World, child ecs.Entity) {
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	state.ChildrenCacheValid = false
 	ecs.Set(world, child, Parent{IsRoot: true})
 	MarkDirty(world, child)
@@ -75,13 +75,13 @@ func RemoveParent(world *ecs.World, child ecs.Entity) {
 
 func QueryChildren(world *ecs.World, entity ecs.Entity) []ecs.Entity {
 	validateChildrenCache(world)
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	return state.ChildrenCache[entity]
 }
 
 func QueryDescendants(world *ecs.World, entity ecs.Entity) []ecs.Entity {
 	validateChildrenCache(world)
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	var out []ecs.Entity
 	stack := append([]ecs.Entity(nil), state.ChildrenCache[entity]...)
 	for len(stack) > 0 {
@@ -124,7 +124,7 @@ func FindGroupRoot(world *ecs.World, entity ecs.Entity) ecs.Entity {
 }
 
 func validateChildrenCache(world *ecs.World) {
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	if state.ChildrenCacheValid {
 		return
 	}
@@ -144,12 +144,12 @@ func validateChildrenCache(world *ecs.World) {
 }
 
 func InvalidateChildrenCache(world *ecs.World) {
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	state.ChildrenCacheValid = false
 }
 
 func UpdateGlobalTransforms(world *ecs.World) {
-	state := ecs.MustResource[TransformState](world)
+	state := ecs.MustResource[State](world)
 	state.dirty = state.dirty[:0]
 	state.depths = state.depths[:0]
 	state.order = state.order[:0]

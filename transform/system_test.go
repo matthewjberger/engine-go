@@ -15,7 +15,7 @@ func newWorld(t *testing.T) *ecs.World {
 	ecs.Register[transform.Parent](world)
 	ecs.Register[transform.LocalTransformDirty](world)
 	ecs.Register[transform.IgnoreParentScale](world)
-	ecs.SetResource(world, transform.NewTransformState())
+	ecs.SetResource(world, transform.NewState())
 	return world
 }
 

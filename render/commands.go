@@ -2,21 +2,21 @@ package render
 
 import "github.com/matthewjberger/indigo/ecs"
 
-type RenderCommand interface {
+type Command interface {
 	Apply(world *ecs.World, renderer *Renderer)
 }
 
-type RenderCommandQueueResource struct {
-	commands []RenderCommand
+type CommandQueueResource struct {
+	commands []Command
 }
 
-func QueueRenderCommand(world *ecs.World, command RenderCommand) {
-	queue := ecs.MustResource[RenderCommandQueueResource](world)
+func QueueCommand(world *ecs.World, command Command) {
+	queue := ecs.MustResource[CommandQueueResource](world)
 	queue.commands = append(queue.commands, command)
 }
 
-func DrainRenderCommands(world *ecs.World, renderer *Renderer) {
-	queue, ok := ecs.Resource[RenderCommandQueueResource](world)
+func DrainCommands(world *ecs.World, renderer *Renderer) {
+	queue, ok := ecs.Resource[CommandQueueResource](world)
 	if !ok {
 		return
 	}

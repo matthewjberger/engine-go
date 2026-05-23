@@ -210,7 +210,7 @@ func (r *Renderer) Reconfigure() {
 }
 
 func RenderFrame(r *Renderer, world *ecs.World) error {
-	DrainRenderCommands(world, r)
+	DrainCommands(world, r)
 
 	surfaceTexture, err := r.Surface.GetCurrentTexture()
 	if err != nil {
