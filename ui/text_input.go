@@ -4,10 +4,6 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 )
 
-// AnyTextInputFocused reports whether the focused entity carries a
-// [TextInput] component. Engine systems that read keyboard input
-// should gate on this so typing in a text field doesn't fire global
-// hotkeys.
 func AnyTextInputFocused(world *ecs.World) bool {
 	if world == nil {
 		return false
@@ -23,8 +19,6 @@ func AnyTextInputFocused(world *ecs.World) bool {
 	return ok
 }
 
-// AdvanceTextInputs applies a frame's typed characters to the
-// focused [TextInput]. Enter emits [TextCommitted].
 func AdvanceTextInputs(world *ecs.World, chars []rune, backspace, enter bool) {
 	pointer := ecs.MustResource[PointerState](world)
 	target := pointer.FocusedEntity

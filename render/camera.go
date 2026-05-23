@@ -2,13 +2,6 @@ package render
 
 import "github.com/go-gl/mathgl/mgl32"
 
-// Camera is the active view + projection settings. Stored as a typed
-// resource on the ECS world; the mesh pass looks it up in Prepare and
-// composes view × projection × global-transform per instance.
-//
-// Kept deliberately simple: a look-at view + a perspective
-// projection driven by aspect/fov/near/far. Multiple cameras,
-// viewports, and controller types can grow on top later.
 type Camera struct {
 	Eye    mgl32.Vec3
 	Target mgl32.Vec3
@@ -19,9 +12,6 @@ type Camera struct {
 	Far         float32
 }
 
-// DefaultCamera returns a camera positioned to look down -Z at the
-// origin, with a 60° vertical FOV. The mesh pass reads aspect from the
-// renderer each frame, so aspect isn't stored on the camera.
 func DefaultCamera() Camera {
 	return Camera{
 		Eye:         mgl32.Vec3{0, 2, 6},
@@ -33,18 +23,14 @@ func DefaultCamera() Camera {
 	}
 }
 
-// CameraView returns the camera's view matrix.
 func CameraView(c *Camera) mgl32.Mat4 {
 	return mgl32.LookAtV(c.Eye, c.Target, c.Up)
 }
 
-// CameraProjection returns the camera's perspective projection
-// composed with the OpenGL → wgpu depth-range remap.
 func CameraProjection(c *Camera, aspect float32) mgl32.Mat4 {
 	return PerspectiveZO(c.FovYRadians, aspect, c.Near, c.Far)
 }
 
-// CameraViewProjection returns CameraProjection × CameraView.
 func CameraViewProjection(c *Camera, aspect float32) mgl32.Mat4 {
 	return CameraProjection(c, aspect).Mul4(CameraView(c))
 }

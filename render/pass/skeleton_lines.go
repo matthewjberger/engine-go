@@ -7,15 +7,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// UpdateSkeletonLines emits a 3-axis cross at every joint origin
-// and a bone segment from each joint to its parent joint when
-// [render.Graphics.ShowSkeletons] is on. Walks every Skin
-// the renderer can see, reads each joint's GlobalTransform, pushes
-// segments into the [Lines] resource. Mirrors the reference
-// engine's skeleton_debug overlay.
-//
-// Place this in the engine schedule AFTER transform_propagation so
-// the joint world matrices are current.
 func UpdateSkeletonLines(world *ecs.World) {
 	settings, ok := ecs.Resource[render.Graphics](world)
 	if !ok || settings == nil || !settings.ShowSkeletons {

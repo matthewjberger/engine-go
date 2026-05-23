@@ -16,13 +16,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// meshPrepare runs every frame:
-//  1. Write camera view * projection into the uniform.
-//  2. Drain EntityDespawned events to free per-handle slots.
-//  3. Allocate slots for entities whose RenderMesh changed.
-//  4. Sparse-upload only the entities whose GlobalTransform or
-//     Material was stamped this tick.
-//  5. Rebuild the sorted handle list so the draw order is stable.
 func meshPrepare(s any, context *render.PassContext) error {
 	state := s.(*meshPassState)
 
@@ -212,10 +205,7 @@ func meshPrepare(s any, context *render.PassContext) error {
 			FirstInstance: 0,
 		}
 		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.indirectBuffer, 0, bytesOf(&indirectTemplate))
-		// Always-identity visible_indices so the wasm draw path
-		// (which doesn't support DrawIndirect and draws every
-		// slot) reads valid indices. The cull compute overwrites
-		// the leading K entries with culled indices on native.
+
 		count := uint32(len(bucket.slotEntity))
 		if count > 0 {
 			identity := state.identityScratch[:0]
@@ -231,11 +221,6 @@ func meshPrepare(s any, context *render.PassContext) error {
 	return nil
 }
 
-// ensureCullBindings lazily creates the per-bucket uniform +
-// bind group that drive the per-bucket cull compute. The uniform
-// holds the mesh's bounding sphere and the indirect-command
-// template; the bind group also references the model storage
-// buffer, indirect command buffer, and visible_indices buffer.
 func ensureCullBindings(bucket *handleInstances, device *wgpu.Device, culling *meshCullingPipeline) error {
 	if bucket.indirectBuffer == nil || culling == nil {
 		return nil
@@ -270,10 +255,6 @@ func ensureCullBindings(bucket *handleInstances, device *wgpu.Device, culling *m
 	return nil
 }
 
-// meshExecute runs the two cluster compute dispatches and then
-// the actual mesh draw inside a single render pass. Compute
-// dispatches happen before BeginRenderPass because a compute pass
-// and a render pass can't share an encoder.
 func meshExecute(s any, context *render.PassContext) error {
 	state := s.(*meshPassState)
 
@@ -324,10 +305,6 @@ func meshExecute(s any, context *render.PassContext) error {
 		depthAttachment.DepthLoadOp = wgpu.LoadOpLoad
 	}
 
-	// The opaque pass opens unconditionally: as the first geometry
-	// pass it owns the color/depth/entity_id/view_normals clears, so
-	// it must run even with no static meshes to clear those targets
-	// for the skinned + instanced passes that load them afterwards.
 	pass := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
 		Label:                  "mesh",
 		ColorAttachments:       []wgpu.RenderPassColorAttachment{colorAttachment, entityIdAttachment, viewNormalsAttachment},
@@ -354,8 +331,6 @@ func meshExecute(s any, context *render.PassContext) error {
 	return nil
 }
 
-// meshRelease tears down every GPU resource the mesh pass owns
-// when the renderer shuts down.
 func meshRelease(s any) {
 	state := s.(*meshPassState)
 	for _, h := range state.perHandle {
@@ -400,16 +375,6 @@ func meshRelease(s any) {
 	}
 }
 
-// extractLights walks the engine world for entities with both
-// [render.Light] and [transform.GlobalTransform], packs them into
-// the [LightGPU] layout the cluster compute + mesh shaders share,
-// and returns directional lights first followed by local
-// (point/spot) lights. The cluster_light_assign pass culls only
-// the local-light suffix; directional lights are iterated by
-// every fragment regardless of position.
-//
-// Color is premultiplied by intensity so the shader doesn't have
-// to multiply at sample time.
 func extractLights(world *ecs.World, scratch []LightGPU) []LightGPU {
 	out := scratch
 	out = out[:0]
@@ -481,10 +446,6 @@ func cosOrZero(angle float32) float32 {
 	return float32(math.Cos(float64(angle)))
 }
 
-// sortDirectionalFirst stable-partitions the slice so every
-// directional light precedes every point/spot light. The cluster
-// shader assumes this layout (num_directional_lights is the
-// boundary index into the same buffer).
 func sortDirectionalFirst(lights []LightGPU) {
 	left := 0
 	for i := range lights {
@@ -521,9 +482,6 @@ func lightsAsBytes(lights []LightGPU) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(&lights[0])), int(LightGPUSize)*len(lights))
 }
 
-// buildClusterUniforms snapshots the camera into the WGSL
-// ClusterUniforms layout. The compute and fragment shaders read
-// this every frame to size tiles and clamp depth slices.
 func buildClusterUniforms(camera *render.Camera, aspect float32, context *render.PassContext, numDirectional, numLocal uint32) ClusterUniforms {
 	proj := render.CameraProjection(camera, aspect)
 	invProj := proj.Inv()
@@ -559,26 +517,11 @@ func buildClusterUniforms(camera *render.Camera, aspect float32, context *render
 	return u
 }
 
-// framebufferSize returns the renderer's current swapchain
-// dimensions so the cluster grid tracks viewport resizes.
 func framebufferSize(context *render.PassContext) (uint32, uint32) {
 	renderer := ecs.MustResource[render.RendererResource](context.World).Renderer
 	return renderer.Config.Width, renderer.Config.Height
 }
 
-// dispatchClusterPasses runs the two compute pipelines that
-// rebuild the cluster grid and assign lights to each cluster.
-// Called from [meshExecute] BEFORE BeginRenderPass — compute
-// dispatches can't share an encoder pass with a render pass.
-//
-//  1. cluster_bounds: writes per-cluster view-space AABBs.
-//     Re-dispatched every frame for simplicity; could be gated
-//     on a "camera changed" flag later, but the cost of running
-//     8x8x24 = 1536 invocations is trivial.
-//  2. copy lightGridReset -> lightGrid (zeros every count).
-//  3. cluster_light_assign: per cluster, tests every local light
-//     against the AABB and writes intersecting indices to
-//     light_indices + light_grid[cluster].count.
 func dispatchClusterPasses(state *meshPassState, context *render.PassContext) {
 	dispatchX := (ClusterGridX + 7) / 8
 	dispatchY := (ClusterGridY + 7) / 8

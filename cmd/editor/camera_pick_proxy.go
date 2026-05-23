@@ -7,13 +7,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// spawnCameraPickProxy attaches an invisible child cube to the
-// camera entity so the GPU pick can resolve clicks on the camera
-// gizmo. The cube material uses AlphaModeBlend with alpha=0 so
-// mesh + OIT discard every fragment; the dedicated pick_proxy
-// pass writes the proxy's entity_id into the picking buffer.
-// PickProxy.Target redirects applySelection back to the owning
-// camera entity.
 func spawnCameraPickProxy(engine *ecs.World, camera ecs.Entity) {
 	primitives, ok := ecs.Resource[asset.Primitives](engine)
 	if !ok || primitives == nil {

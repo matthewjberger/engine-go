@@ -27,11 +27,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// LoadedScene is the result of parsing a glTF file: a flat list of
-// nodes that together describe a scene tree, plus the registered
-// mesh + material handles every primitive references. Use
-// [SpawnLoadedScene] to materialize the tree into ECS entities, or
-// walk Nodes yourself for custom spawn behavior.
 type LoadedScene struct {
 	Label      string
 	Nodes      []SceneNode
@@ -41,38 +36,23 @@ type LoadedScene struct {
 	Animations []AnimationClip
 	Lights     []LoadedLight
 	Cameras    []LoadedCamera
-	// SkinSpecs[i] holds the joint node indices + inverse-bind
-	// matrices for glTF skin i. SpawnLoadedScene materializes each
-	// SkinSpec into an asset.Skin once joint entities exist.
+
 	SkinSpecs []SkinSpec
-	// skinnedPrimSpawned records the child entities
-	// SpawnLoadedScene creates for multi-primitive skinned mesh
-	// nodes so the per-skin resolution pass can attach SkinnedMesh
-	// components after the joint entities exist.
+
 	skinnedPrimSpawned []skinnedSpawnRecord
 }
 
-// SkinSpec describes one glTF skin without GPU resources: the
-// joint nodes' indices into LoadedScene.Nodes and the
-// inverse-bind matrices in joint order. Resolved into an
-// asset.Skin at spawn time.
 type SkinSpec struct {
 	JointNodeIndices    []int
 	InverseBindMatrices []mgl32.Mat4
 }
 
-// skinnedSpawnRecord tracks each multi-primitive skinned child
-// entity SpawnLoadedScene creates so the post-spawn skin-
-// resolution loop can attach SkinnedMesh components after the
-// asset.Skin instances exist.
 type skinnedSpawnRecord struct {
 	NodeIdx     int
 	SkinnedMesh SkinnedMeshHandle
 	Entity      ecs.Entity
 }
 
-// LoadedLightType mirrors render.LightType without depending on
-// the render package (which already imports this package).
 type LoadedLightType uint8
 
 const (
@@ -81,10 +61,6 @@ const (
 	LoadedLightSpot
 )
 
-// LoadedLight is one entry from the document's
-// KHR_lights_punctual.lights array. Nodes that reference it via
-// their own KHR_lights_punctual extension store the index in
-// SceneNode.LightIndex.
 type LoadedLight struct {
 	Name           string
 	Type           LoadedLightType
@@ -95,9 +71,6 @@ type LoadedLight struct {
 	OuterConeAngle float32
 }
 
-// LoadedCamera carries the perspective parameters of a glTF
-// camera. Nodes referencing it store the index in
-// SceneNode.CameraIndex.
 type LoadedCamera struct {
 	Name        string
 	FovYRadians float32
@@ -105,10 +78,6 @@ type LoadedCamera struct {
 	Far         float32
 }
 
-// SceneNode is one glTF node: a TRS transform, optional mesh +
-// material assignment, and child node indices. Multi-primitive
-// meshes expand into ChildPrimitives so each primitive lands on its
-// own entity (matching the glTF "one mesh, many primitives" model).
 type SceneNode struct {
 	Name            string
 	Translation     [3]float32
@@ -119,53 +88,35 @@ type SceneNode struct {
 	HasMesh         bool
 	Material        Material
 	ChildPrimitives []SceneNodePrimitive
-	// SkinIndex points into LoadedScene.SkinSpecs when this node
-	// has a glTF skin assigned; -1 otherwise. When >= 0, Mesh /
-	// ChildPrimitives are SkinnedMeshHandles rather than
-	// MeshHandles.
+
 	SkinIndex int
-	// LightIndex points into LoadedScene.Lights when this node
-	// carries a KHR_lights_punctual light reference; -1 otherwise.
+
 	LightIndex int
-	// CameraIndex points into LoadedScene.Cameras when this node
-	// has a camera; -1 otherwise.
+
 	CameraIndex int
-	// SkinnedMesh holds the skinned counterpart of Mesh when
-	// SkinIndex >= 0 and the primitive carried JOINTS_0 attrs.
+
 	SkinnedMesh       SkinnedMeshHandle
 	HasSkinnedMesh    bool
 	ChildSkinnedPrims []SceneNodeSkinnedPrimitive
-	// Instances holds per-instance local transforms when the node
-	// carries EXT_mesh_gpu_instancing; nil otherwise. When present
-	// the node spawns an InstancedMesh of Mesh rather than a
-	// RenderMesh.
+
 	Instances []mgl32.Mat4
 }
 
-// SceneNodeSkinnedPrimitive is one rigged primitive of a
-// multi-primitive glTF mesh node.
 type SceneNodeSkinnedPrimitive struct {
 	Mesh     SkinnedMeshHandle
 	Material Material
 }
 
-// SceneNodePrimitive is one mesh primitive in a multi-primitive glTF
-// mesh node. The spawner gives each primitive its own child entity
-// so they can carry distinct materials and per-primitive bounds.
 type SceneNodePrimitive struct {
 	Mesh     MeshHandle
 	Material Material
 }
 
-// LoadedMesh names a registered mesh from this load.
 type LoadedMesh struct {
 	Handle MeshHandle
 	Name   string
 }
 
-// LoadGltfFile reads a glTF or glb file from disk and forwards to
-// [LoadGltfReader]. External-file image URIs are resolved relative
-// to the parent directory of path.
 func LoadGltfFile(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, skinnedAssets *SkinnedMeshAssets, arrays *MaterialTextureArrays, path string) (*LoadedScene, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -179,26 +130,15 @@ func LoadGltfFile(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, sk
 	return LoadGltfReaderOpts(device, queue, assets, skinnedAssets, arrays, f, opts)
 }
 
-// LoadGltfOptions tweaks reader-side behavior. Label is the name
-// prefix used for registered meshes and textures; BaseDir is the
-// directory used to resolve external image URIs (empty disables
-// external resolution).
 type LoadGltfOptions struct {
 	Label   string
 	BaseDir string
 }
 
-// LoadGltfReader is the LoadGltfReaderOpts shortcut with default
-// options. Kept for callers that don't need a base dir.
 func LoadGltfReader(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, skinnedAssets *SkinnedMeshAssets, arrays *MaterialTextureArrays, label string, r io.Reader) (*LoadedScene, error) {
 	return LoadGltfReaderOpts(device, queue, assets, skinnedAssets, arrays, r, LoadGltfOptions{Label: label})
 }
 
-// LoadGltfReaderOpts parses a glTF / glb document from r, uploads
-// every primitive to assets, decodes every texture into cache,
-// captures animation data, and returns a LoadedScene that mirrors
-// the glTF node hierarchy. Caller can then [SpawnLoadedScene] to
-// materialize entities.
 func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, skinnedAssets *SkinnedMeshAssets, arrays *MaterialTextureArrays, r io.Reader, opts LoadGltfOptions) (*LoadedScene, error) {
 	label := opts.Label
 	data, err := io.ReadAll(r)
@@ -313,9 +253,7 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 		out.Instances = readNodeInstances(doc, node)
 		if node.Mesh != nil {
 			prims := meshPrimitives[*node.Mesh]
-			// Pre-classify primitives so multi-primitive nodes
-			// route static and skinned variants down their
-			// respective slots.
+
 			staticPrims := make([]SceneNodePrimitive, 0, len(prims))
 			skinnedPrims := make([]SceneNodeSkinnedPrimitive, 0, len(prims))
 			for _, p := range prims {
@@ -370,17 +308,6 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 	return scene, nil
 }
 
-// SpawnLoadedScene materializes every node in scene as an entity on
-// world, preserving the glTF hierarchy via transform.Parent. Returns
-// every spawned entity in node-index order (entities[i] is the
-// entity for scene.Nodes[i]); roots are at entities[scene.Roots[k]].
-//
-// world must have transform.LocalTransform, transform.Parent,
-// RenderMesh, and Material registered. The standard
-// [indigo/app.NewEngineWorld] does this.
-// SpawnLoadedScene needs a *wgpu.Device to allocate per-skin
-// joint matrix storage buffers. Static-only scenes still work
-// when device is nil (the function skips skin materialization).
 func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device) []ecs.Entity {
 	entities := make([]ecs.Entity, len(scene.Nodes))
 	localMask := ecs.MustMaskOf[transform.LocalTransform](world)
@@ -398,12 +325,7 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device)
 		entities[i] = world.Spawn(transformMask)
 		ecs.Set(world, entities[i], transform.IdentityGlobalTransform())
 	}
-	// Synthesize an asset-wrapper entity above every glTF top-level
-	// node so the whole loaded asset selects as a single cluster
-	// even when the glTF has multiple sibling root nodes (Flight
-	// Helmet, BoomBox, ABeautifulGame all do). The wrapper carries
-	// GroupRoot + an identity transform; the scene's original roots
-	// reparent to it.
+
 	assetRoot := world.Spawn(transformMask | parentMask | groupRootMask)
 	ecs.Set(world, assetRoot, transform.IdentityLocalTransform())
 	ecs.Set(world, assetRoot, transform.IdentityGlobalTransform())
@@ -465,11 +387,6 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device)
 		}
 	}
 
-	// Materialize each glTF skin into an asset.Skin, then write the
-	// SkinnedMesh component on every entity that referenced that
-	// skin (both single-primitive nodes and multi-primitive
-	// children). joint matrix uploads happen each frame via
-	// PrepareSkinMatrices.
 	skinResources := make([]*Skin, len(scene.SkinSpecs))
 	if device != nil {
 		for skinIdx, spec := range scene.SkinSpecs {
@@ -515,17 +432,8 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device)
 		ecs.Set(world, record.Entity, SkinnedMesh{Mesh: record.SkinnedMesh, Skin: skin})
 	}
 
-	// The loader sets transform.Parent directly via ecs.Set above,
-	// which bypasses the UpdateParent helper. The transform
-	// children cache is keyed on Parent values and would stay
-	// stale (no children mapped for any of the new entities)
-	// without an explicit invalidate.
 	transform.InvalidateChildrenCache(world)
 
-	// Auto-attach an AnimationPlayer to the first scene root when
-	// the source glTF carries clips. The player owns a copy of the
-	// clips plus the per-load node-index-to-entity map so per-frame
-	// channel sampling can resolve target nodes in O(1).
 	if len(scene.Animations) > 0 && len(scene.Roots) > 0 {
 		nodeIndexToEntity := make(map[int]ecs.Entity, len(entities))
 		for i, e := range entities {
@@ -539,10 +447,6 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device)
 	return entities
 }
 
-// identityNodeMatrix is the column-major identity matrix qmuntal/gltf
-// fills in for unspecified node.Matrix fields. Used to detect when a
-// node's transform actually lives in the Matrix slot vs. when it
-// lives in the TRS slots and Matrix is just default-populated.
 var identityNodeMatrix = [16]float64{
 	1, 0, 0, 0,
 	0, 1, 0, 0,
@@ -550,14 +454,6 @@ var identityNodeMatrix = [16]float64{
 	0, 0, 0, 1,
 }
 
-// nodeTRS returns the node's TRS as three components. glTF lets a
-// node specify its transform two ways: a 4x4 Matrix field, or the
-// separate Translation / Rotation / Scale fields. The qmuntal/gltf
-// decoder always populates both — Matrix is set to identity when
-// the JSON only specifies TRS, and TRS is set to defaults when the
-// JSON only specifies Matrix. We check for a non-identity Matrix
-// first; if it's identity, the real transform lives in the TRS
-// slots.
 func nodeTRS(node *gltf.Node) (translation [3]float32, rotation [4]float32, scale [3]float32) {
 	if node.Matrix != identityNodeMatrix && node.Matrix != [16]float64{} {
 		return decomposeMatrix(node.Matrix)
@@ -577,12 +473,6 @@ func nodeTRS(node *gltf.Node) (translation [3]float32, rotation [4]float32, scal
 	return
 }
 
-// decomposeMatrix splits a column-major 4x4 affine TRS matrix into
-// its translation, rotation, and scale components. Translation
-// lives in the fourth column. Scale magnitudes are the lengths of
-// the first three columns; the columns are then renormalized into
-// a pure rotation matrix which is converted to a quaternion.
-// Assumes no shear (glTF matrices are required to be decomposable).
 func decomposeMatrix(matrix [16]float64) (translation [3]float32, rotation [4]float32, scale [3]float32) {
 	translation = [3]float32{float32(matrix[12]), float32(matrix[13]), float32(matrix[14])}
 
@@ -600,9 +490,6 @@ func decomposeMatrix(matrix [16]float64) (translation [3]float32, rotation [4]fl
 		scale[2] = 1
 	}
 
-	// Detect mirror (negative determinant) and flip one axis so
-	// the residual rotation has a positive determinant. Without
-	// this fix Mat4ToQuat on a left-handed basis returns garbage.
 	det := col0.Cross(col1).Dot(col2)
 	if det < 0 {
 		col0 = col0.Mul(-1)
@@ -631,9 +518,6 @@ func childIndicesOf(node *gltf.Node) []int {
 	return out
 }
 
-// readEmissiveStrengthExt parses the KHR_materials_emissive_strength
-// payload off a glTF material's extensions map. Returns 1.0 when
-// the extension is absent or malformed.
 func readEmissiveStrengthExt(ext gltf.Extensions) float32 {
 	if ext == nil {
 		return 1.0
@@ -659,9 +543,6 @@ func readEmissiveStrengthExt(ext gltf.Extensions) float32 {
 	return float32(decoded.EmissiveStrength)
 }
 
-// readPunctualLights extracts the document-level
-// KHR_lights_punctual.lights array. Returns nil when the
-// extension is absent.
 func readPunctualLights(doc *gltf.Document) []LoadedLight {
 	if doc == nil || doc.Extensions == nil {
 		return nil
@@ -736,9 +617,6 @@ func readPunctualLights(doc *gltf.Document) []LoadedLight {
 	return out
 }
 
-// readCameras extracts the document's perspective camera array.
-// Orthographic cameras are skipped (the engine's view camera is
-// perspective-only today).
 func readCameras(doc *gltf.Document) []LoadedCamera {
 	if doc == nil || len(doc.Cameras) == 0 {
 		return nil
@@ -763,9 +641,6 @@ func readCameras(doc *gltf.Document) []LoadedCamera {
 	return out
 }
 
-// readNodeLightIndex peels the node-level KHR_lights_punctual
-// payload (which carries a single "light" index into the
-// document's lights array). Returns -1 when absent.
 func readNodeLightIndex(ext gltf.Extensions) int {
 	if ext == nil {
 		return -1
@@ -788,11 +663,6 @@ func readNodeLightIndex(ext gltf.Extensions) int {
 	return decoded.Light
 }
 
-// readNodeInstances peels EXT_mesh_gpu_instancing off a node and
-// builds one local TRS matrix per instance from its TRANSLATION /
-// ROTATION / SCALE accessors. Returns nil when the extension is
-// absent or carries no instances. Missing attributes default to
-// identity (zero translation, identity rotation, unit scale).
 func readNodeInstances(doc *gltf.Document, node *gltf.Node) []mgl32.Mat4 {
 	if node == nil || node.Extensions == nil {
 		return nil
@@ -864,10 +734,6 @@ func readNodeInstances(doc *gltf.Document, node *gltf.Node) []mgl32.Mat4 {
 	return out
 }
 
-// jsonRawFromExt normalizes the three shapes an extension value
-// can take with qmuntal/gltf (raw bytes, json.RawMessage, or a
-// pre-decoded map) into a JSON byte slice the caller can
-// unmarshal into a typed payload.
 func jsonRawFromExt(raw any) ([]byte, error) {
 	switch v := raw.(type) {
 	case json.RawMessage:
@@ -905,11 +771,6 @@ func classifyTextures(doc *gltf.Document) []TextureColorSpace {
 	return spaces
 }
 
-// uploadTextures decodes every glTF texture, resizes to the array
-// tile size, uploads it into the appropriate (sRGB or linear)
-// material texture array, and returns the packed layer + wrap-mode
-// value the mesh shader consumes. Index in the result matches the
-// glTF texture index.
 func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label string, doc *gltf.Document, spaces []TextureColorSpace, baseDir string) ([]uint32, error) {
 	out := make([]uint32, len(doc.Textures))
 	for i := range out {
@@ -939,9 +800,6 @@ func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label stri
 	return out, nil
 }
 
-// samplerWrapModes returns the per-axis wrap codes for a glTF
-// texture's sampler. Defaults to Repeat / Repeat when the texture
-// doesn't reference a sampler.
 func samplerWrapModes(doc *gltf.Document, tex *gltf.Texture) (WrapMode, WrapMode) {
 	if tex.Sampler == nil {
 		return WrapRepeat, WrapRepeat
@@ -961,11 +819,6 @@ func mapWrap(mode gltf.WrappingMode) WrapMode {
 	}
 }
 
-// resizeRGBA bilinearly rescales tightly-packed RGBA8 pixels to
-// the target size. When the source already matches it returns the
-// input slice unchanged. The mesh texture arrays require all
-// layers to be the same size, so any non-matching glTF image gets
-// rescaled at load time.
 func resizeRGBA(src []byte, srcW, srcH, dstW, dstH uint32) []byte {
 	if srcW == dstW && srcH == dstH {
 		return src
@@ -1118,9 +971,6 @@ func buildGltfPrimitive(doc *gltf.Document, prim *gltf.Primitive) ([]MeshVertex,
 	return expanded, nil
 }
 
-// buildSkinnedGltfPrimitive mirrors buildGltfPrimitive but also
-// reads JOINTS_0 + WEIGHTS_0 and packs them into the per-vertex
-// SkinnedMeshVertex layout the skinned mesh pass expects.
 func buildSkinnedGltfPrimitive(doc *gltf.Document, prim *gltf.Primitive) ([]SkinnedMeshVertex, error) {
 	posAttr, ok := prim.Attributes["POSITION"]
 	if !ok {
@@ -1239,15 +1089,6 @@ func buildSkinnedGltfPrimitive(doc *gltf.Document, prim *gltf.Primitive) ([]Skin
 	return expanded, nil
 }
 
-// readSkins extracts every glTF skin's joint node indices and
-// inverse-bind matrices. Uses the dedicated
-// modeler.ReadInverseBindMatrices accessor so column-major
-// glTF storage decodes into [col][row]float32 as expected, then
-// reshuffles into the column-major flat layout mgl32.Mat4 uses.
-//
-// Pads the IBM slice up to len(joints) with identity matrices to
-// match the reference engine's behavior when a skin's IBM
-// accessor is short (or absent).
 func readSkins(doc *gltf.Document) ([]SkinSpec, error) {
 	if len(doc.Skins) == 0 {
 		return nil, nil
@@ -1276,16 +1117,7 @@ func readSkins(doc *gltf.Document) ([]SkinSpec, error) {
 			}
 			for k := 0; k < count; k++ {
 				m := mats[k]
-				// modeler returns matrices as [row][col]float32:
-				// m[r][c] is the value at row r, column c. The
-				// modeler's own TestReadInverseBindMatrices verifies
-				// this -- a buffer storing column-major (col0, col1,
-				// col2, col3) of (1,0,0,0)(2,0,0,0)(3,0,0,0)(4,0,0,0)
-				// decodes to m[0]={1,2,3,4}, which is row 0.
-				//
-				// mgl32.Mat4 stores column-major flat (col 0 rows
-				// 0..3 at indices 0..3, col 1 at 4..7, etc.), so
-				// rearrange m[row][col] -> column-major flat.
+
 				spec.InverseBindMatrices[k] = mgl32.Mat4{
 					m[0][0], m[1][0], m[2][0], m[3][0],
 					m[0][1], m[1][1], m[2][1], m[3][1],
@@ -1494,10 +1326,7 @@ func decodeGltfImage(doc *gltf.Document, img *gltf.Image, baseDir string) ([]byt
 	w := uint32(bounds.Dx())
 	h := uint32(bounds.Dy())
 	pixels := make([]byte, w*h*4)
-	// .RGBA() returns premultiplied values, which zero out RGB
-	// on transparent pixels. OPAQUE-mode materials with alpha-
-	// textured base color need the unmodified RGB so glTF's
-	// "alpha is ignored" semantics show the texture's color.
+
 	for y := 0; y < int(h); y++ {
 		for x := 0; x < int(w); x++ {
 			c := color.NRGBAModel.Convert(decoded.At(bounds.Min.X+x, bounds.Min.Y+y)).(color.NRGBA)

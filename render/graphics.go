@@ -5,43 +5,28 @@ import (
 	"github.com/matthewjberger/indigo/ui"
 )
 
-// Graphics is the engine's single runtime-tunable settings resource.
-// Every pass reads its toggle / parameter from this struct each
-// frame; nothing else holds renderer state. Adding a new tunable
-// means adding a field here, wiring its default in [DefaultGraphics],
-// and reading it in the pass.
-//
-// Sub-structs group related fields so the type stays scannable. The
-// flat layout (no nested pointers) keeps the resource cheap to copy
-// and trivially comparable.
 type Graphics struct {
-	// Visibility toggles.
 	ShowSky       bool
 	ShowGrid      bool
 	ShowBounds    bool
 	ShowNormals   bool
 	ShowSkeletons bool
 
-	// Post-process toggles + parameters.
 	Exposure    float32
 	FxaaEnabled bool
 	Bloom       Bloom
 	Ssao        Ssao
 
-	// GPU culling.
 	Cull Cull
 
-	// Debug overlay line styling.
 	Lines DebugLines
 }
 
-// Bloom collects the bloom post-process tunables.
 type Bloom struct {
 	Enabled   bool
 	Intensity float32
 }
 
-// Ssao collects the screen-space ambient occlusion tunables.
 type Ssao struct {
 	Enabled     bool
 	Radius      float32
@@ -50,15 +35,11 @@ type Ssao struct {
 	SampleCount int
 }
 
-// Cull holds the GPU culling toggle + minimum on-screen pixel
-// diameter below which an instance is dropped.
 type Cull struct {
 	Enabled            bool
 	MinScreenPixelSize float32
 }
 
-// DebugLines collects styling for the bounding-volume / normal /
-// skeleton overlays. Sizes are in world units; colors are RGBA.
 type DebugLines struct {
 	NormalLength       float32
 	NormalColor        [4]float32
@@ -67,9 +48,6 @@ type DebugLines struct {
 	SkeletonBoneColor  [4]float32
 }
 
-// DefaultGraphics returns the engine's starting settings: sky +
-// grid on, FXAA on, bloom on (subtle), SSAO on (tight radius),
-// GPU culling on (1-pixel cutoff), debug overlays off.
 func DefaultGraphics() Graphics {
 	return Graphics{
 		ShowSky:       true,
@@ -104,10 +82,6 @@ func DefaultGraphics() Graphics {
 	}
 }
 
-// UpdateGraphicsToggles flips visibility toggles based on this
-// frame's keyboard input: G grid, S sky, F FXAA, B bounds, N
-// normals, K skeletons. No-ops when a text input is focused so
-// keyboard text entry doesn't trip toggles.
 func UpdateGraphicsToggles(world *ecs.World) {
 	if ecs.HasResource[ui.WorldRef](world) {
 		if ui.AnyTextInputFocused(ecs.MustResource[ui.WorldRef](world).World) {

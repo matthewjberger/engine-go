@@ -1,6 +1,3 @@
-// Scene-population helpers: spawns the demo grid + sun + light
-// orbs at editor startup, plus the per-frame game-side spinner
-// system that feeds rotation back into the engine world.
 package main
 
 import (
@@ -15,17 +12,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// initializeWorldEntities populates the engine and game worlds for
-// the editor's demo scene. Engine entities get visual + transform
-// components; each engine entity has a paired game entity carrying
-// its Spinner state and an EngineEntity bridge. Light entities are
-// added so the clustered lighting and shadow paths have local
-// lights to cull and shadow casters.
-//
-// orbMesh is the mesh handle used for the visible body of each
-// light orb; the orb's material is marked unlit so the mesh reads
-// at its light's color regardless of which other lights illuminate
-// it.
 func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshNames []string, orbMesh asset.MeshHandle) {
 	const (
 		gridExtent  = 3
@@ -38,9 +24,6 @@ func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshN
 		ecs.MustMaskOf[render.Light](worlds.Engine) |
 		ecs.MustMaskOf[app.Name](worlds.Engine)
 
-	// Default sun: positioned up and back, aimed so the light's
-	// -Z forward direction lands on the origin. Gives the scene a
-	// classic upper-right key-light cast.
 	sun := worlds.Engine.Spawn(lightMask)
 	sunYaw := transform.QuatFromAxisAngle(1.821, transform.Vec3{0, 1, 0})
 	sunPitch := transform.QuatFromAxisAngle(-0.969, transform.Vec3{1, 0, 0})
@@ -111,12 +94,6 @@ func initializeWorldEntities(worlds app.Worlds, meshes []asset.MeshHandle, meshN
 	}
 }
 
-// advanceSpinners is the game-side system. Walks the (Spinner |
-// EngineEntity) archetype with [ecs.World.ForEach] for table-level
-// column access, accumulates per-entity rotation, and writes the
-// result to the engine world through [app.SyncEngineRotation]. Game
-// state is the source of truth; reaching across into the engine world
-// goes through the named sync API.
 func advanceSpinners(game *ecs.World) {
 	delta := ecs.MustResource[window.Window](game).Timing.DeltaSeconds
 	engineRef := ecs.MustResource[app.EngineRef](game)
@@ -135,10 +112,6 @@ func advanceSpinners(game *ecs.World) {
 	})
 }
 
-// spawnGroundPlane spawns a flat 40x40 quad lying on the XZ plane
-// at y=-0.5 so cast shadows have a surface to land on. Matte
-// light-gray material; no special components beyond the standard
-// renderable bundle.
 func spawnGroundPlane(worlds app.Worlds) {
 	engine := worlds.Engine
 	primitives := ecs.MustResource[asset.Primitives](engine)
@@ -159,12 +132,6 @@ func spawnGroundPlane(worlds app.Worlds) {
 	ecs.Set(engine, ground, app.Name{Value: "Ground"})
 }
 
-// spawnLightOrbs scatters a handful of colored point lights and a
-// downward spot light around the origin so the clustered light
-// pipeline has something to cull. Each light entity also carries a
-// small unlit cube the same color as its light, making the orb's
-// position visible even when its light doesn't reach a given
-// fragment.
 func spawnLightOrbs(worlds app.Worlds, orbMesh asset.MeshHandle) {
 	const orbScale float32 = 0.12
 	scale := transform.Vec3{orbScale, orbScale, orbScale}
@@ -231,10 +198,6 @@ func spawnPointOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, pos
 	ecs.Set(worlds.Engine, entity, app.Name{Value: name})
 }
 
-// spawnSpotOrb spawns a spot-light orb whose cone aims straight
-// down (-Y). The light entity's rotation rotates +Z to -Y so the
-// transform's -Z column (which the renderer reads as the light's
-// world-space direction) lands on (0, -1, 0).
 func spawnSpotOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, position, scale, color transform.Vec3, intensity, range_, innerCone, outerCone float32) {
 	mask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
@@ -245,7 +208,7 @@ func spawnSpotOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, posi
 		ecs.MustMaskOf[app.Name](worlds.Engine)
 
 	entity := worlds.Engine.Spawn(mask)
-	// Rotate +Z to -Y: rotation around +X by -PI/2.
+
 	rotation := transform.QuatFromAxisAngle(-float32(math.Pi/2), transform.Vec3{1, 0, 0})
 	ecs.Set(worlds.Engine, entity, transform.LocalTransform{
 		Translation: position,
@@ -272,9 +235,6 @@ func spawnSpotOrb(worlds app.Worlds, orbMesh asset.MeshHandle, name string, posi
 	ecs.Set(worlds.Engine, entity, app.Name{Value: name})
 }
 
-// spawnDemoCamera spawns a tagged scene-camera entity so the
-// camera gizmo system has something to draw. The entity has no
-// render mesh; the gizmo is the only visualization.
 func spawnDemoCamera(worlds app.Worlds) {
 	mask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |

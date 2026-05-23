@@ -252,10 +252,6 @@ func (state *ssaoBlurPassState) recreateOutput(device *wgpu.Device, width, heigh
 	return nil
 }
 
-// ecsSetSsaoResource publishes the blurred-AO view so postprocess
-// can pick it up via ECS resource lookup. Reuses the same
-// *SsaoResult pointer when one already exists so consumers that
-// cached the pointer pick up resize updates automatically.
 func ecsSetSsaoResource(context *render.PassContext, view *wgpu.TextureView) {
 	if view == nil {
 		return

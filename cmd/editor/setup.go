@@ -1,17 +1,3 @@
-// Shared bootstrap used by both the desktop (!js) and wasm (js)
-// entry points. Builds an engine world via [app.NewEngineWorld]
-// plus a game world that holds Spinner state, wires schedules +
-// the render graph, then spawns the demo scene.
-//
-// Sibling files in cmd/editor/:
-//
-//   - hud_layout.go   — HudHandles + buildHud + menu/builder helpers
-//   - hud.go          — per-frame HudContext + refresh + input handlers
-//   - world.go        — initializeWorldEntities + light orbs + spinner system
-//   - loader.go       — defaultGltf embed + loadGltf* helpers
-//   - picking.go      — handlePickResult + applyEntitySelection
-//   - main.go         — native entry (GLFW)
-//   - main_js.go      — wasm entry (canvas)
 package main
 
 import (
@@ -92,9 +78,6 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	return worlds, demo
 }
 
-// editorApp wires the editor's render pipeline: sky -> mesh -> grid
-// -> fxaa -> present. Each [pass.Add*Pass] helper builds the
-// underlying [render.Pass] and registers it with the graph.
 func editorApp() *app.App {
 	return &app.App{
 		ConfigureRenderGraph: func(world *ecs.World, renderer *render.Renderer) {

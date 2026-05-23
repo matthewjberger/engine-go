@@ -2,9 +2,6 @@ package ecs
 
 import "math/bits"
 
-// Spawn allocates a new entity and places it in the archetype identified
-// by mask. Every component listed in mask is initialized to the zero value
-// of its type; use Set or SpawnBatch with an initializer to fill them in.
 func (w *World) Spawn(mask Mask) Entity {
 	w.guardStructuralMutation("Spawn")
 	entity := w.allocator.allocate()
@@ -12,13 +9,6 @@ func (w *World) Spawn(mask Mask) Entity {
 	return entity
 }
 
-// SpawnEntityInto places an externally-allocated entity into this world's
-// archetype for mask. Pair it with [MultiWorld.Spawn], which mints an
-// entity from a shared allocator that the caller then places into one or
-// more worlds.
-//
-// Panics if the entity is already placed in this world. Use AddComponents
-// or RemoveComponents to migrate a placed entity between archetypes.
 func (w *World) SpawnEntityInto(entity Entity, mask Mask) {
 	w.guardStructuralMutation("SpawnEntityInto")
 	if _, _, ok := w.entityLocs.get(entity); ok {
@@ -42,9 +32,6 @@ func (w *World) placeEntityInArchetype(entity Entity, mask Mask) {
 	w.entityLocs.set(entity, tableIndex, arrayIndex)
 }
 
-// SpawnBatch allocates count entities sharing mask and runs init on each
-// freshly-pushed slot with direct table access, in the order they were
-// spawned. Returns the new entity handles.
 func (w *World) SpawnBatch(mask Mask, count int, init func(table *Archetype, index int)) []Entity {
 	w.guardStructuralMutation("SpawnBatch")
 	if count <= 0 {
@@ -74,12 +61,6 @@ func (w *World) SpawnBatch(mask Mask, count int, init func(table *Archetype, ind
 	return entities
 }
 
-// Despawn removes an entity from the world. Stale handles are rejected
-// and the call is a no-op. The slot is compacted with swap-remove, so
-// the entity previously at the last index of the source table moves to
-// fill the gap. In multi-world mode use [MultiWorld.Despawn] instead;
-// calling Despawn against one of the child worlds would deallocate the
-// entity id while other worlds still hold archetype rows for it.
 func (w *World) Despawn(entity Entity) bool {
 	w.guardStructuralMutation("Despawn")
 	if !despawnFromArchetype(w, entity) {
@@ -89,9 +70,6 @@ func (w *World) Despawn(entity Entity) bool {
 	return true
 }
 
-// despawnFromArchetype removes the entity's row from the world without
-// touching the allocator. MultiWorld.Despawn calls this on every child
-// world and then deallocates the id exactly once.
 func despawnFromArchetype(world *World, entity Entity) bool {
 	tableIndex, arrayIndex, ok := world.entityLocs.get(entity)
 	if !ok {
@@ -130,11 +108,6 @@ func despawnFromArchetype(world *World, entity Entity) bool {
 	return true
 }
 
-// AddComponents migrates entity to the archetype carrying its current
-// mask OR mask. Newly-added components are initialized to their zero
-// value. Returns false for stale handles, true otherwise (including when
-// the operation is a no-op because the entity already has every requested
-// component).
 func (w *World) AddComponents(entity Entity, mask Mask) bool {
 	tableIndex, arrayIndex, ok := w.entityLocs.get(entity)
 	if !ok {
@@ -162,9 +135,6 @@ func (w *World) AddComponents(entity Entity, mask Mask) bool {
 	return true
 }
 
-// RemoveComponents migrates entity to the archetype carrying its current
-// mask AND-NOT mask. Components present in source but not destination are
-// dropped. Returns false for stale handles.
 func (w *World) RemoveComponents(entity Entity, mask Mask) bool {
 	tableIndex, arrayIndex, ok := w.entityLocs.get(entity)
 	if !ok {
@@ -192,11 +162,6 @@ func (w *World) RemoveComponents(entity Entity, mask Mask) bool {
 	return true
 }
 
-// moveEntity physically relocates entity from one archetype to another.
-// Components present in both archetypes are migrated by reflect-assignment
-// so the GC tracks any embedded pointers correctly. Components added by
-// the move are pushed as zero values. Components dropped by the move are
-// swap-removed off the source table along with the rest of the source row.
 func moveEntity(world *World, entity Entity, fromTableIndex, fromArrayIndex, toTableIndex int) {
 	if fromTableIndex == toTableIndex {
 		return

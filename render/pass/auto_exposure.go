@@ -26,9 +26,6 @@ type autoExposureBuffer struct {
 	Pad2                uint32
 }
 
-// AutoExposureSettings drives the auto-exposure compute. Stored as
-// an ECS resource so the editor / game can tune adaptation speed
-// and target luminance.
 type AutoExposureSettings struct {
 	Enabled         bool
 	AdaptationRate  float32
@@ -37,8 +34,6 @@ type AutoExposureSettings struct {
 	MaxScale        float32
 }
 
-// DefaultAutoExposureSettings returns reasonable defaults for an
-// outdoor / mixed scene.
 func DefaultAutoExposureSettings() AutoExposureSettings {
 	return AutoExposureSettings{
 		Enabled:         true,
@@ -49,8 +44,6 @@ func DefaultAutoExposureSettings() AutoExposureSettings {
 	}
 }
 
-// AutoExposureResource exposes the GPU buffer that holds the
-// smoothed log-luminance the postprocess pass reads.
 type AutoExposureResource struct {
 	Buffer *wgpu.Buffer
 }
@@ -63,12 +56,6 @@ type autoExposurePassState struct {
 	lastView *wgpu.TextureView
 }
 
-// AddAutoExposurePass registers a compute pass that walks a 16x16
-// strided grid of scene_color, reduces log-luminance in workgroup
-// shared memory, and smooths the result into a small storage
-// buffer. The postprocess pass reads the buffer and divides a
-// target luminance by exp2(current_log_luminance) to scale the
-// final exposure.
 func AddAutoExposurePass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newAutoExposureState(renderer.Device)
 	if err != nil {
@@ -162,8 +149,7 @@ func autoExposurePrepare(s any, context *render.PassContext) error {
 		AdaptationRate: settings.AdaptationRate,
 		DeltaTime:      delta,
 	}
-	// Write only the dynamic header fields; the compute shader's
-	// other fields read-write inside the buffer.
+
 	context.Queue.WriteBuffer(state.buffer, uint64(unsafe.Offsetof(header.AdaptationRate)), bytesOf(&header.AdaptationRate))
 	context.Queue.WriteBuffer(state.buffer, uint64(unsafe.Offsetof(header.DeltaTime)), bytesOf(&header.DeltaTime))
 

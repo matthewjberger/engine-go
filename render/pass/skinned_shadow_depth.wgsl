@@ -1,9 +1,3 @@
-// Vertex stage of the skinned variant of shadow depth: applies
-// the same per-influence skinning math the skinned mesh pass
-// uses, then projects through the cascade's light view-proj into
-// shadow-clip-space. Fragment stage is empty -- the rasterizer
-// writes depth automatically. Mirrors the reference engine's
-// skinned_shadow_depth.
 
 struct CascadeUniforms {
     light_view_proj: mat4x4<f32>,

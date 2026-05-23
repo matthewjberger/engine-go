@@ -59,12 +59,6 @@ func iterFamily(tmpl string, max int) string {
 }
 
 const iterTmpl = `
-// Iter{{.N}} walks every entity that has components {{join .Letters ", "}}
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter{{.N}}[{{join .Letters ", "}} any](world *World, extraInclude, exclude Mask, callback func(entity Entity{{range .Letters}}, {{. | lower}} *{{.}}{{end}})) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -89,9 +83,6 @@ func Iter{{.N}}[{{join .Letters ", "}} any](world *World, extraInclude, exclude 
 `
 
 const changedTmpl = `
-// IterChanged{{.N}} yields entities matching {{join .Letters ", "}} (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged{{.N}}[{{join .Letters ", "}} any](world *World, extraInclude, exclude Mask, callback func(entity Entity{{range .Letters}}, {{. | lower}} *{{.}}{{end}})) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -120,11 +111,6 @@ func IterChanged{{.N}}[{{join .Letters ", "}} any](world *World, extraInclude, e
 `
 
 const parallelTmpl = `
-// ParallelIter{{.N}} runs callback over every entity that has components
-// {{join .Letters ", "}} in parallel across matching archetypes. Each
-// archetype gets one goroutine; the callback must be safe to call
-// concurrently. Structural world mutations are forbidden in the callback
-// (defer them via the command buffer).
 func ParallelIter{{.N}}[{{join .Letters ", "}} any](world *World, extraInclude, exclude Mask, callback func(entity Entity{{range .Letters}}, {{. | lower}} *{{.}}{{end}})) {
 {{range .Letters}}	{{. | lower}}Info := mustComponentInfo[{{.}}](world)
 {{end}}	include := extraInclude{{range .Letters}} | {{. | lower}}Info.mask{{end}}

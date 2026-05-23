@@ -119,10 +119,7 @@ func TestParallelIter2(t *testing.T) {
 }
 
 func TestParallelIterAcrossArchetypesRaceFree(t *testing.T) {
-	// One ParallelIter call fans out across archetypes. Each archetype is
-	// owned by exactly one goroutine, so column writes never race with each
-	// other. The test runs under -race and exercises three archetypes
-	// concurrently.
+
 	world := New()
 	posMask := Register[Position](world)
 	velMask := Register[Velocity](world)
@@ -151,10 +148,7 @@ func TestParallelIterAcrossArchetypesRaceFree(t *testing.T) {
 }
 
 func TestSequentialParallelItersAreSafe(t *testing.T) {
-	// Multiple ParallelIter calls in series must not race on the query cache.
-	// (Concurrent ParallelIter calls from separate goroutines are not a
-	// supported pattern: cachedTables populates the world's cache on miss
-	// and is single-writer by design.)
+
 	world := New()
 	posMask := Register[Position](world)
 	velMask := Register[Velocity](world)

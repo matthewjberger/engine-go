@@ -13,18 +13,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// handleInstances owns the GPU and CPU bookkeeping for one mesh
-// handle in the mesh pass. Each handle holds three storage buffers
-// indexed by per-instance slot: world matrices, u32 material
-// indices into the global material registry, and entity IDs. The
-// same slot stays with an entity for its whole lifetime so sparse
-// uploads can write to known offsets.
-//
-// indirectBuffer holds a single DrawIndirect command
-// (vertex_count, instance_count, first_vertex, first_instance) that
-// the mesh execute pass reads via pass.DrawIndirect. Writing
-// instance_count from a future GPU-culling compute pass becomes a
-// one-line swap.
 type handleInstances struct {
 	modelBuffer          *wgpu.Buffer
 	materialIndexBuffer  *wgpu.Buffer
@@ -80,9 +68,6 @@ func releaseHandleInstances(h *handleInstances) {
 	}
 }
 
-// drawIndirectCommand mirrors the wgpu draw-indirect parameter
-// block: vertex_count, instance_count, first_vertex, first_instance.
-// 16 bytes, one per handle.
 type drawIndirectCommand struct {
 	VertexCount   uint32
 	InstanceCount uint32
@@ -92,20 +77,10 @@ type drawIndirectCommand struct {
 
 const drawIndirectCommandSize = uint64(unsafe.Sizeof(drawIndirectCommand{}))
 
-// matrixSize is the byte size of a single mat4. Used for offset
-// arithmetic in sparse uploads.
 const matrixSize uint64 = uint64(unsafe.Sizeof(mgl32.Mat4{}))
 
-// minHandleCapacity is the starting capacity for a handle's
-// instance buffers. The buffers double on growth.
 const minHandleCapacity uint32 = 64
 
-// ensureHandleCapacity grows the handle's three storage buffers
-// and rebuilds its bind group when the slot count exceeds the
-// current capacity. Existing contents aren't preserved on grow —
-// subsequent IterChanged passes refresh whatever changed this
-// frame and the slot-stable layout ensures other entries get
-// reuploaded next time their components stamp.
 func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.BindGroupLayout) error {
 	required := uint32(len(h.slotEntity))
 	if h.capacity >= required && h.modelBuffer != nil && h.materialIndexBuffer != nil && h.entityIdBuffer != nil && h.visibleIndicesBuffer != nil {
@@ -221,10 +196,6 @@ func ensureHandleCapacity(h *handleInstances, device *wgpu.Device, layout *wgpu.
 	return nil
 }
 
-// releaseEntitySlot is the despawn handler: swap-remove the
-// entity's slot in its handle, then rewrite the moved tail
-// entity's data at its new slot so subsequent draws don't read
-// stale matrices / materials.
 func releaseEntitySlot(state *meshPassState, context *render.PassContext, entity ecs.Entity) {
 	handle, ok := state.entityHandle[entity]
 	if !ok {

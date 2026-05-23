@@ -23,10 +23,6 @@ type BreakoutHud struct {
 	MarqueePhase float32
 }
 
-// buildBreakoutHud builds the persistent HUD tree. All entities
-// exist from frame zero; visibility is toggled per frame in
-// [updateBreakoutHud] by writing into their Color / Text alpha,
-// rather than spawning/despawning UI entities.
 func buildBreakoutHud(world *ecs.World) BreakoutHud {
 	b := ui.NewBuilder(world)
 
@@ -73,8 +69,7 @@ func buildBreakoutHud(world *ecs.World) BreakoutHud {
 		Color:   [4]float32{1, 1, 1, 0},
 		Scale:   4.5,
 	}).Entity()
-	// X = (panel inner width - button width) / 2 to center inside
-	// the LayoutColumn cursor (which left-aligns children).
+
 	restartButton := b.Node(ui.Node{X: 114, Width: 200, Height: 32}).
 		Color(ui.Color{RGBA: [4]float32{0, 0, 0, 0}}).
 		Interactive().
@@ -162,8 +157,6 @@ func updateBreakoutHud(worlds app.Worlds, delta float32) {
 	}
 }
 
-// marqueeColor cycles RGB through the hue wheel via three sine waves
-// phase-offset by 120 degrees.
 func marqueeColor(phase, alpha float32) [4]float32 {
 	const twoPiOver3 = 2.0943951
 	r := 0.5 + 0.5*float32(math.Sin(float64(phase)))

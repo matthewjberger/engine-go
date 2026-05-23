@@ -1,7 +1,3 @@
-// glTF load + scene-spawn helpers for the editor. The embedded
-// DamagedHelmet.glb is the auto-loaded default at startup; the
-// loadGltf* helpers also serve as the entry points for the
-// wasm canvas drop callback and the native GLFW drop callback.
 package main
 
 import (
@@ -19,26 +15,15 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// defaultGltf is the .glb the editor auto-loads at startup so the
-// view isn't just primitives. Embedded so both the native build
-// and the wasm build see it without depending on a filesystem
-// path.
-//
 //go:embed assets/DamagedHelmet.glb
 var defaultGltf []byte
 
-// loadDefaultGltf spawns the embedded DamagedHelmet scene at
-// startup. Logs and continues on error rather than aborting boot
-// so a broken asset doesn't prevent the editor from launching.
 func loadDefaultGltf(engine *ecs.World, renderer *render.Renderer) {
 	if _, err := loadGltfBytes(engine, renderer, "DamagedHelmet.glb", defaultGltf); err != nil {
 		log.Printf("gltf load failed: %v", err)
 	}
 }
 
-// loadGltfBytes parses a glTF / glb buffer and spawns its scene
-// through the shared [spawnLoadedSceneNamed] helper. Used by both
-// the editor's startup auto-load and the wasm drop callback.
 func loadGltfBytes(engine *ecs.World, renderer *render.Renderer, label string, data []byte) ([]ecs.Entity, error) {
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets
@@ -50,9 +35,6 @@ func loadGltfBytes(engine *ecs.World, renderer *render.Renderer, label string, d
 	return spawnLoadedSceneNamed(engine, renderer, scene, label)
 }
 
-// loadGltfInto loads path via [asset.LoadGltfFile] and forwards to
-// the bytes-based spawn helper. Native-only — wasm calls
-// [loadGltfBytes] directly with bytes fetched from a drop event.
 func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]ecs.Entity, error) {
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets

@@ -1,15 +1,3 @@
-// Package render owns the WGPU device, surface, and render graph
-// for the engine. One [Renderer] value lives as a resource on the
-// ECS world and is consulted by passes and the main loop.
-//
-// Render-graph design: declarative resources, passes that read /
-// write named slots, a compile step that decides clear-vs-load,
-// version stamps that drive bind-group invalidation, the ECS world
-// threaded through [PassContext]. The default graph wires passes
-// to write color into a transient scene_color target; a final
-// present pass blits scene_color to the external swapchain. Future
-// passes (bloom, SSAO, OIT) chain between scene_color and the
-// present pass without changes here.
 package render
 
 import (
@@ -20,21 +8,10 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 )
 
-// DepthFormat is the depth target the renderer creates.
 const DepthFormat = wgpu.TextureFormatDepth32Float
 
-// HdrFormat is the color format every 3D rendering pass targets:
-// 16-bit float per channel, so HDR specular highlights, emissive
-// values, and tonemap inputs stay above 1.0 until the dedicated
-// postprocess pass maps them down for display.
 const HdrFormat = wgpu.TextureFormatRGBA16Float
 
-// Renderer owns the long-lived WGPU surface/device/queue plus the
-// render graph and the ids of the graph's standard resources
-// (swapchain, scene_color, depth). Mesh registries and primitive
-// handles live as separate engine-world resources (see
-// [asset.MeshAssets] / [asset.Primitives]). The renderer is stored as a resource
-// on the ECS world and is not safe for concurrent use.
 type Renderer struct {
 	Surface       *wgpu.Surface
 	Adapter       *wgpu.Adapter
@@ -55,9 +32,6 @@ type Renderer struct {
 	OitRevealID     ResourceID
 }
 
-// NewRenderer acquires an adapter and device from the instance, configures
-// the surface, and builds the render graph with the swapchain, scene_color,
-// and depth resources registered.
 func NewRenderer(instance *wgpu.Instance, surface *wgpu.Surface, width, height uint32) (*Renderer, error) {
 	renderer := &Renderer{Surface: surface}
 
@@ -110,16 +84,6 @@ func NewRenderer(instance *wgpu.Instance, surface *wgpu.Surface, width, height u
 	return renderer, nil
 }
 
-// defaultGraph returns a graph with the engine's standard resources
-// registered: a transient scene_color (color passes render here), a
-// transient depth, and an external swapchain (the present pass blits
-// scene_color into it). It does not register any passes; the application
-// adds those in its configure-render-graph hook.
-//
-// scene_color is HDR (Rgba16Float) so 3D rendering can preserve
-// linear values >1.0 until the postprocess pass tonemaps into
-// ldr_color (surface format). UI and gizmo passes write LDR and
-// target ldr_color directly.
 func defaultGraph(surfaceFormat wgpu.TextureFormat, width, height uint32) *Graph {
 	graph := NewGraph()
 	clearColor := wgpu.Color{R: 0.19, G: 0.24, B: 0.42, A: 1.0}
@@ -206,9 +170,7 @@ func defaultGraph(surfaceFormat wgpu.TextureFormat, width, height uint32) *Graph
 		},
 		ClearColor: &clearOitAccum,
 	})
-	// reveal clears to white because the reveal channel multiplies
-	// in 1 - alpha each fragment; a white background means
-	// "no transparent fragment has touched this pixel yet."
+
 	clearOitReveal := wgpu.Color{R: 1, G: 1, B: 1, A: 1}
 	graph.AddColorTexture(ResourceDescriptor{
 		Name: "oit_reveal",
@@ -228,8 +190,6 @@ func defaultGraph(surfaceFormat wgpu.TextureFormat, width, height uint32) *Graph
 	return graph
 }
 
-// AspectRatio returns the surface aspect ratio, clamped to avoid divide-
-// by-zero during minimization.
 func (r *Renderer) AspectRatio() float32 {
 	height := r.Config.Height
 	if height < 1 {
@@ -238,8 +198,6 @@ func (r *Renderer) AspectRatio() float32 {
 	return float32(r.Config.Width) / float32(height)
 }
 
-// Resize reconfigures the surface and reallocates transients at the new
-// dimensions.
 func (r *Renderer) Resize(width, height uint32) error {
 	r.Config.Width = width
 	r.Config.Height = height
@@ -247,17 +205,10 @@ func (r *Renderer) Resize(width, height uint32) error {
 	return r.Graph.ResizeTransients(r.Device, width, height)
 }
 
-// Reconfigure re-applies the current surface configuration without
-// rebuilding transients.
 func (r *Renderer) Reconfigure() {
 	r.Surface.Configure(r.Adapter, r.Device, r.Config)
 }
 
-// RenderFrame acquires the next surface texture, wires it into the
-// "swapchain" resource, runs the graph against the world, and
-// presents. Shaped like a system (free function over the renderer +
-// world) so the main loop's call site reads consistently with the
-// scheduler.
 func RenderFrame(r *Renderer, world *ecs.World) error {
 	DrainRenderCommands(world, r)
 
@@ -295,18 +246,10 @@ func RenderFrame(r *Renderer, world *ecs.World) error {
 	return nil
 }
 
-// RendererResource is the type wrapper applications use to put a
-// *Renderer on an ECS world via [ecs.SetResource]. freecs-go keys
-// resources by Go type, so a named wrapper keeps the renderer
-// distinct from any other pointer-typed resource the application
-// might add.
 type RendererResource struct {
 	Renderer *Renderer
 }
 
-// Release frees every WGPU object owned by the renderer. Mesh
-// registries owned by the engine world ([asset.MeshAssets] resource) are
-// released independently.
 func (r *Renderer) Release() {
 	if r.Graph != nil {
 		r.Graph.Release()

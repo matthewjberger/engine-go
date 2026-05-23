@@ -22,25 +22,14 @@ var shadowDepthShader string
 //go:embed skinned_shadow_depth.wgsl
 var skinnedShadowDepthShader string
 
-// ShadowMapSize is the per-cascade side length of the directional
-// shadow map. 2048 per cascade x 4 cascades = decent close shadow
-// fidelity without 4096-per-cascade VRAM cost.
 const ShadowMapSize uint32 = 2048
 
-// ShadowMapFormat is depth32float to match the engine's main depth.
 const ShadowMapFormat = wgpu.TextureFormatDepth32Float
 
-// NumShadowCascades is the count of cascaded shadow map levels.
 const NumShadowCascades = 4
 
-// CascadeSplitDistances are the camera-space far-z values that
-// partition the camera frustum into per-cascade sub-frustums.
-// Matches the reference engine's defaults.
 var CascadeSplitDistances = [NumShadowCascades]float32{10.0, 40.0, 150.0, 500.0}
 
-// Shadow owns the GPU-side cascaded directional shadow map: a
-// 2D-array depth texture (one layer per cascade) + the four
-// per-cascade light view-projections the mesh pass samples.
 type Shadow struct {
 	Texture       *wgpu.Texture
 	ArrayView     *wgpu.TextureView
@@ -52,7 +41,6 @@ type Shadow struct {
 	LightViewVPs  [NumShadowCascades]mgl32.Mat4
 }
 
-// ShadowResource wraps Shadow as an engine-world resource.
 type ShadowResource struct {
 	Shadow *Shadow
 }
@@ -96,10 +84,6 @@ type shadowInstancedEntry struct {
 	worldBuffer *wgpu.Buffer
 }
 
-// NewShadow allocates the cascade depth texture (2D array, one
-// layer per cascade) + per-cascade attachment views + a single
-// 2D-array view the mesh pass binds for sampling + four per-cascade
-// uniform buffers + the mesh-pass cascade-aware uniform.
 func NewShadow(device *wgpu.Device) (*Shadow, error) {
 	shadow := &Shadow{}
 	tex, err := device.CreateTexture(&wgpu.TextureDescriptor{
@@ -212,7 +196,6 @@ func NewShadow(device *wgpu.Device) (*Shadow, error) {
 	return shadow, nil
 }
 
-// Release frees the shadow map's GPU resources.
 func (s *Shadow) Release() {
 	if s.UniformBuffer != nil {
 		s.UniformBuffer.Release()
@@ -248,11 +231,6 @@ func (s *Shadow) Release() {
 	}
 }
 
-// NewShadowDepthPass builds the depth-only render pass that draws
-// every RenderMesh entity into the shadow texture from the
-// directional sun's point of view. Mesh-pass per-handle bind
-// groups are reused; only the model storage buffer at binding 0
-// is read by the shadow shader (positions only, no materials).
 func NewShadowDepthPass(device *wgpu.Device, shadow *Shadow) (*render.Pass, error) {
 	state := &shadowDepthPassState{}
 
@@ -459,11 +437,6 @@ func NewShadowDepthPass(device *wgpu.Device, shadow *Shadow) (*render.Pass, erro
 	}, nil
 }
 
-// shadowDepthPrepare computes one light view-projection per
-// cascade by partitioning the camera frustum at the configured
-// split distances + fitting an ortho around each sub-frustum's
-// world-space corners. Uploads the per-cascade matrices to their
-// shadow_depth uniforms and the mesh-pass cascade uniform.
 func shadowDepthPrepare(s any, context *render.PassContext) error {
 	_ = s
 
@@ -525,20 +498,10 @@ func shadowDepthPrepare(s any, context *render.PassContext) error {
 	return nil
 }
 
-// scaledCascadeSplits returns the cascade split distances. Kept as
-// a function (not a constant) so a future per-camera scaling can
-// fold in without touching call sites; the reference engine's
-// camera-near-ratio scaling assumes a 0.01 reference near, which
-// doesn't match indigo's 0.1 default and was making cascade 0
-// span 100 world units instead of 10.
 func scaledCascadeSplits(_ float32) [NumShadowCascades]float32 {
 	return CascadeSplitDistances
 }
 
-// fitLightFrustum builds a light view-projection that wraps the
-// supplied world-space frustum corners. Average the corners to
-// pick the look-at target; transform to light space; ortho extents
-// come from per-axis min/max with a small pad.
 func fitLightFrustum(corners [8]mgl32.Vec3, lightDir mgl32.Vec3) (mgl32.Mat4, float32) {
 	center := mgl32.Vec3{0, 0, 0}
 	for _, corner := range corners {
@@ -613,11 +576,6 @@ func fitLightFrustum(corners [8]mgl32.Vec3, lightDir mgl32.Vec3) (mgl32.Mat4, fl
 	return lightProj.Mul4(lightView), texelWorld
 }
 
-// shadowDepthExecute draws every RenderMesh bucket the mesh pass
-// already knows about into the shadow depth texture. Reads the
-// mesh pass's per-handle model storage buffer through binding 0
-// of the shadow's handle bind group, which is layout-compatible
-// with the mesh pass's per-handle group.
 func shadowDepthExecute(s any, context *render.PassContext) error {
 	state := s.(*shadowDepthPassState)
 	shadow := ecs.MustResource[ShadowResource](context.World).Shadow
@@ -628,10 +586,6 @@ func shadowDepthExecute(s any, context *render.PassContext) error {
 	}
 	assets := ecs.MustResource[asset.MeshAssetsResource](context.World).Assets
 
-	// Build + upload skinned joint-offset uniforms and bind groups
-	// before any render pass opens: writeBuffer encodes a buffer
-	// copy on wasm, which is illegal while a render pass is locked
-	// on the same encoder.
 	skinningRes, hasSkinning := ecs.Resource[SkinningComputeResource](context.World)
 	var skinnedAssets *asset.SkinnedMeshAssets
 	skinnedReady := false
@@ -720,11 +674,6 @@ func shadowDepthExecute(s any, context *render.PassContext) error {
 			pass.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
 		}
 
-		// Draw instanced mesh entities into the same cascade. The
-		// instanced world-matrix buffer (from InstancedCompute) binds
-		// at group 1 binding 0 exactly like the static handle's model
-		// buffer, so the static shadow pipeline + shader draw it
-		// directly with one instanced call per entity.
 		if instancedRes, ok := ecs.Resource[InstancedComputeResource](context.World); ok && instancedRes != nil && instancedRes.Compute != nil {
 			compute := instancedRes.Compute
 			instancedMask := ecs.MustMaskOf[asset.InstancedMesh](context.World)
@@ -776,11 +725,6 @@ func shadowDepthExecute(s any, context *render.PassContext) error {
 			}
 		}
 
-		// Draw skinned mesh entities into the same cascade using
-		// the parallel skinned pipeline. The cascade view-proj
-		// bind group is layout-compatible across both pipelines
-		// (same group 0). The per-entity joint-offset bind groups
-		// were built before this render pass opened.
 		if skinnedReady {
 			pass.SetPipeline(state.skinnedPipeline)
 			pass.SetBindGroup(0, state.cascadeBgs[cascade], nil)
@@ -853,11 +797,6 @@ func shadowDepthRelease(s any) {
 	}
 }
 
-// ensureShadowHandleBindGroup lazily creates a one-binding bind
-// group over the bucket's modelBuffer. Cached on the bucket so
-// subsequent frames reuse it; invalidated when the bucket's
-// buffers are reallocated by ensureHandleCapacity (which clears
-// the cached group via the meshPass invalidate hook).
 func ensureShadowHandleBindGroup(bucket *handleInstances, device *wgpu.Device, layout *wgpu.BindGroupLayout) (*wgpu.BindGroup, error) {
 	if bucket.shadowBindGroup != nil {
 		return bucket.shadowBindGroup, nil
@@ -876,10 +815,6 @@ func ensureShadowHandleBindGroup(bucket *handleInstances, device *wgpu.Device, l
 	return bg, nil
 }
 
-// AddShadowDepthPass registers the shadow depth pass with the
-// renderer's graph. It has no graph slots (its output is the
-// engine-world ShadowResource's texture); placed before the mesh
-// pass so the mesh shader can sample the populated depth texture.
 func AddShadowDepthPass(renderer *render.Renderer, shadow *Shadow) (*render.Pass, error) {
 	pass, err := NewShadowDepthPass(renderer.Device, shadow)
 	if err != nil {
@@ -891,18 +826,11 @@ func AddShadowDepthPass(renderer *render.Renderer, shadow *Shadow) (*render.Pass
 	return pass, nil
 }
 
-// findMeshPassState fishes the mesh pass's state out of the render
-// graph by name. Used by the shadow pass to share per-handle
-// buckets without duplicating the mesh/entity bookkeeping.
 func findMeshPassState(_ *ecs.World) (*meshPassState, bool) {
 	state, ok := sharedMeshPassState.Load().(*meshPassState)
 	return state, ok && state != nil
 }
 
-// orthoZO returns a zero-to-one depth orthographic projection
-// suitable for WebGPU's clip space. mgl32.Ortho produces the
-// OpenGL convention with z in [-1, 1] which gets half-clipped
-// when used as a shadow projection target.
 func orthoZO(left, right, bottom, top, near, far float32) mgl32.Mat4 {
 	width := right - left
 	height := top - bottom
@@ -915,10 +843,6 @@ func orthoZO(left, right, bottom, top, near, far float32) mgl32.Mat4 {
 	}
 }
 
-// cameraFrustumCornersWorldRange returns the 8 world-space corners
-// of a sub-frustum of the camera bounded by near + far distances.
-// Falls back to a scene-centered box when the camera resource is
-// missing.
 func cameraFrustumCornersWorldRange(camera *render.Camera, hasCamera bool, aspect, near, far float32) [8]mgl32.Vec3 {
 	if !hasCamera || camera == nil {
 		var fallback [8]mgl32.Vec3

@@ -37,9 +37,7 @@ func TestFindKeyframeMidSpan(t *testing.T) {
 func TestFindKeyframeExactBoundary(t *testing.T) {
 	times := []float32{0.0, 1.0, 2.0}
 	a, b, _ := findKeyframe(times, 1.0)
-	// Exact match on times[1]: returns the span starting at index 1
-	// with factor 0 (or the previous span with factor 1; both produce
-	// the same sampled value).
+
 	if a < 0 || b > 2 {
 		t.Errorf("exact-boundary keys out of range: (%d,%d)", a, b)
 	}
@@ -64,10 +62,7 @@ func TestSampleVec3Step(t *testing.T) {
 }
 
 func TestSampleQuatLinearSlerp(t *testing.T) {
-	// Identity to 90 deg yaw around +Y. Halfway through should be a
-	// 45 deg yaw quaternion: (0, sin(22.5), 0, cos(22.5)) ... wait
-	// 90 deg yaw quaternion is (0, sin(45), 0, cos(45)) = (0, .7071, 0, .7071).
-	// Slerp halfway should give us 45 deg yaw: (0, sin(22.5), 0, cos(22.5)).
+
 	outputs := [][4]float32{
 		{0, 0, 0, 1},
 		{0, float32(math.Sin(math.Pi / 4)), 0, float32(math.Cos(math.Pi / 4))},

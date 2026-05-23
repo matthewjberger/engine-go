@@ -7,11 +7,6 @@ import (
 	"unsafe"
 )
 
-// ParallelIter1 runs callback over every entity that has components
-// A in parallel across matching archetypes. Each
-// archetype gets one goroutine; the callback must be safe to call
-// concurrently. Structural world mutations are forbidden in the callback
-// (defer them via the command buffer).
 func ParallelIter1[A any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A)) {
 	aInfo := mustComponentInfo[A](world)
 	include := extraInclude | aInfo.mask
@@ -38,11 +33,6 @@ func ParallelIter1[A any](world *World, extraInclude, exclude Mask, callback fun
 	wg.Wait()
 }
 
-// ParallelIter2 runs callback over every entity that has components
-// A, B in parallel across matching archetypes. Each
-// archetype gets one goroutine; the callback must be safe to call
-// concurrently. Structural world mutations are forbidden in the callback
-// (defer them via the command buffer).
 func ParallelIter2[A, B any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B)) {
 	aInfo := mustComponentInfo[A](world)
 	bInfo := mustComponentInfo[B](world)
@@ -72,11 +62,6 @@ func ParallelIter2[A, B any](world *World, extraInclude, exclude Mask, callback 
 	wg.Wait()
 }
 
-// ParallelIter3 runs callback over every entity that has components
-// A, B, C in parallel across matching archetypes. Each
-// archetype gets one goroutine; the callback must be safe to call
-// concurrently. Structural world mutations are forbidden in the callback
-// (defer them via the command buffer).
 func ParallelIter3[A, B, C any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C)) {
 	aInfo := mustComponentInfo[A](world)
 	bInfo := mustComponentInfo[B](world)
@@ -109,11 +94,6 @@ func ParallelIter3[A, B, C any](world *World, extraInclude, exclude Mask, callba
 	wg.Wait()
 }
 
-// ParallelIter4 runs callback over every entity that has components
-// A, B, C, D in parallel across matching archetypes. Each
-// archetype gets one goroutine; the callback must be safe to call
-// concurrently. Structural world mutations are forbidden in the callback
-// (defer them via the command buffer).
 func ParallelIter4[A, B, C, D any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D)) {
 	aInfo := mustComponentInfo[A](world)
 	bInfo := mustComponentInfo[B](world)

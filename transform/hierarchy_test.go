@@ -128,7 +128,7 @@ func TestFindGroupRoot(t *testing.T) {
 func TestIgnoreParentScaleStripsScale(t *testing.T) {
 	world := newWorld(t)
 	root := spawnAt(t, world, transform.Vec3{0, 0, 0})
-	// Set root scale to 10 uniformly
+
 	transform.AssignLocalTransform(world, root, transform.LocalTransform{
 		Translation: transform.Vec3{0, 0, 0},
 		Rotation:    transform.QuatIdentity(),
@@ -142,14 +142,11 @@ func TestIgnoreParentScaleStripsScale(t *testing.T) {
 
 	global, _ := ecs.Get[transform.GlobalTransform](world, child)
 	got := transform.GlobalTransformTranslation(global)
-	// With IgnoreParentScale, child's local (1, 0, 0) should land at
-	// world (1, 0, 0) — not (10, 0, 0) which is what unstripped scale
-	// would produce.
+
 	if got != (transform.Vec3{1, 0, 0}) {
 		t.Errorf("IgnoreParentScale child world position = %v, want {1 0 0}", got)
 	}
 
-	// Sanity check: without the marker the child WOULD scale to 10.
 	other := spawnAt(t, world, transform.Vec3{1, 0, 0})
 	transform.UpdateParent(world, other, root)
 	transform.UpdateGlobalTransforms(world)

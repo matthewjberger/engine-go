@@ -14,11 +14,6 @@ import (
 //go:embed selection_mask.wgsl
 var selectionMaskShader string
 
-// selectionMaskMaxEntities caps how many distinct entity IDs the
-// shader's selection_bits buffer can address. The buffer is sized
-// for this many entities upfront so the bind group stays static.
-// Grow it if the engine starts spawning more than this number of
-// entities in a single world.
 const selectionMaskMaxEntities = 4096
 
 const selectionMaskWordCount = selectionMaskMaxEntities / 32
@@ -40,14 +35,6 @@ type selectionMaskPassState struct {
 	bitsetScratch [selectionMaskWordCount]uint32
 }
 
-// NewSelectionMaskPass builds the selection-mask pass: a fullscreen
-// postprocess that samples the entity_id texture per pixel, tests
-// each pixel's entity ID against a CPU-uploaded bitset of selected
-// entities, and writes 1.0 to the selection_mask target where the
-// test passes.
-//
-// Reuses the entity_id texture the mesh pass already writes for
-// picking, so the only per-frame upload is the small bitset.
 func NewSelectionMaskPass(device *wgpu.Device) (*render.Pass, error) {
 	state := &selectionMaskPassState{}
 
@@ -160,10 +147,6 @@ func NewSelectionMaskPass(device *wgpu.Device) (*render.Pass, error) {
 	}, nil
 }
 
-// setSelectionBit marks the entity ID's slot in the bitset. Out-of-
-// range IDs are dropped silently — the bitset capacity is a render
-// constant, and a stray oversized ID just means that entity won't
-// be considered selected this frame.
 func setSelectionBit(bits []uint32, id uint32) {
 	word := id / 32
 	bit := id & 31
@@ -173,13 +156,6 @@ func setSelectionBit(bits []uint32, id uint32) {
 	bits[word] |= 1 << bit
 }
 
-// collectDescendants walks every descendant of root through the
-// transform parent/children cache. Used by the selection-mask pass
-// so selecting a group root highlights the full cluster as a unit:
-// the bitset gains an entry per descendant, internal sub-mesh
-// boundaries end up mask-to-mask (no outline edge), and the
-// dilation produces a single silhouette outline instead of one
-// outline per mesh.
 func collectDescendants(world *ecs.World, root ecs.Entity) []ecs.Entity {
 	stack := []ecs.Entity{root}
 	var out []ecs.Entity

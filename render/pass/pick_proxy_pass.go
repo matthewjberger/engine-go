@@ -34,11 +34,6 @@ type pickProxyPassState struct {
 	aspectFn        func() float32
 }
 
-// AddPickProxyPass writes per-entity entity_id values for every
-// entity carrying a PickProxy component. Reads depth so proxies
-// occluded by opaque geometry don't claim a click that should land
-// on the wall in front of them. No color writes — only the
-// entity_id attachment is touched.
 func AddPickProxyPass(renderer *render.Renderer) (*render.Pass, error) {
 	state := &pickProxyPassState{aspectFn: renderer.AspectRatio}
 

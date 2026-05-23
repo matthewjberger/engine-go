@@ -1,8 +1,3 @@
-// Depth-only prepass for the static mesh path. Reads the cull
-// shader's visible_indices, transforms position, writes depth so
-// the main pass runs with DepthCompare=LessEqual + DepthWrite=OFF
-// for early-Z trim. Blend-mode (alpha_mode 2) fragments discard so
-// their depth doesn't occlude the OIT pass.
 
 struct VertexInput {
     @location(0) position: vec4<f32>,

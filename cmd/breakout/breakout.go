@@ -11,8 +11,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// Field geometry. The play area is a rectangle in the world's XZ
-// plane (Y is up). The camera looks straight down at the field.
 const (
 	fieldMinX   float32 = -5.0
 	fieldMaxX   float32 = 5.0
@@ -39,12 +37,6 @@ const (
 	startingLives = 3
 )
 
-// spawnBreakoutScene populates both worlds with the paddle, ball, and
-// brick wall. Engine entities carry transforms + RenderMesh +
-// Material; game entities carry the gameplay components and an
-// EngineEntity link to the engine-side render twin. Every entity
-// uses the same white-cube mesh; the tint comes from the per-entity
-// Material component.
 func spawnBreakoutScene(worlds app.Worlds, palette brickPalette) {
 	engineMask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |
@@ -121,11 +113,6 @@ func spawnBreakoutScene(worlds app.Worlds, palette brickPalette) {
 	}
 }
 
-// breakoutInputSystem reads the engine world's [render.Input] (filled
-// by the platform callbacks each frame) and writes paddle motion plus
-// gameplay edge events (launch, reset) into the game world. A and D
-// are held checks via [render.InputIsKeyDown]; space and R are
-// edge-triggered via KeysJustDown.
 func breakoutInputSystem(game *ecs.World) {
 	engineRef := ecs.MustResource[app.EngineRef](game)
 	engine := engineRef.World
@@ -186,10 +173,6 @@ func breakoutInputSystem(game *ecs.World) {
 	})
 }
 
-// breakoutBallSystem advances the ball position, walls/ceiling
-// bouncing, then bounces off the paddle and any bricks it overlaps.
-// Brick hits despawn the linked engine entity through the named sync
-// API. The ball stays glued to the paddle while unlaunched.
 func breakoutBallSystem(game *ecs.World) {
 	engineRef := ecs.MustResource[app.EngineRef](game)
 	engine := engineRef.World
@@ -289,8 +272,6 @@ func breakoutBallSystem(game *ecs.World) {
 	}
 }
 
-// breakoutWinSystem flags the GameState as won when the brick wall
-// is empty.
 func breakoutWinSystem(game *ecs.World) {
 	state := ecs.MustResource[GameState](game)
 	if state.Won || state.Lost {
@@ -301,11 +282,6 @@ func breakoutWinSystem(game *ecs.World) {
 	}
 }
 
-// breakoutSyncSystem writes the game-side positions of the paddle,
-// ball, and any surviving bricks into their engine counterparts'
-// LocalTransforms via the [app] sync API. The bricks don't move so
-// this is technically redundant for them, but it keeps the pattern
-// uniform with the spinner demo.
 func breakoutSyncSystem(game *ecs.World) {
 	engineRef := ecs.MustResource[app.EngineRef](game)
 	engine := engineRef.World
@@ -325,8 +301,6 @@ func breakoutSyncSystem(game *ecs.World) {
 	})
 }
 
-// titleForState renders the current score/lives/status into the
-// window title text. Stand-in for proper text rendering.
 func titleForState(state *GameState) string {
 	suffix := ""
 	switch {

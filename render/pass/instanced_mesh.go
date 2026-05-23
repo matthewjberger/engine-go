@@ -57,11 +57,6 @@ type instancedMeshState struct {
 	perEntity map[ecs.Entity]*instancedRenderEntity
 }
 
-// AddInstancedMeshPass renders InstancedMesh entities. World
-// matrices come from the InstancedCompute pass (which must run
-// earlier); this pass issues one instanced draw per entity reading
-// that world-matrix buffer by instance index. Writes scene_color +
-// entity_id + view_normals like the other geometry passes.
 func AddInstancedMeshPass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newInstancedMeshState(renderer.Device, renderer.AspectRatio)
 	if err != nil {

@@ -5,13 +5,10 @@ import (
 	"reflect"
 )
 
-// Mask is a 64-bit component-set mask. Each registered component type owns
-// one bit. The practical ceiling is 64 components per World.
 type Mask uint64
 
 const maxComponents = 64
 
-// componentInfo describes a registered component type.
 type componentInfo struct {
 	bitIndex uint8
 	mask     Mask
@@ -56,18 +53,12 @@ func (r *registry) infoForBit(bit uint8) *componentInfo {
 	return r.byBit[bit]
 }
 
-// Register registers component type T with the world if it has not been
-// registered already and returns its single-bit Mask. Component bit positions
-// are assigned in registration order, so callers that want stable masks
-// across runs should register all component types at startup in a fixed order.
 func Register[T any](world *World) Mask {
 	elemType := reflect.TypeOf((*T)(nil)).Elem()
 	info := world.registry.registerType(elemType)
 	return info.mask
 }
 
-// MaskOf returns the Mask for component type T and true if T is
-// registered, or (0, false) otherwise.
 func MaskOf[T any](world *World) (Mask, bool) {
 	elemType := reflect.TypeOf((*T)(nil)).Elem()
 	info, ok := world.registry.infoForType(elemType)
@@ -77,8 +68,6 @@ func MaskOf[T any](world *World) (Mask, bool) {
 	return info.mask, true
 }
 
-// MustMaskOf returns the Mask for T or panics if T is not registered.
-// Use MaskOf for optional lookups.
 func MustMaskOf[T any](world *World) Mask {
 	m, ok := MaskOf[T](world)
 	if !ok {
@@ -88,19 +77,11 @@ func MustMaskOf[T any](world *World) Mask {
 	return m
 }
 
-// componentInfoFor returns the registered info for T, or (nil, false) when
-// T was never registered on this world. Used by read-only accessors that
-// should answer "this world does not have T" rather than panic, which
-// matters in multi-world setups where a component lives on one child world
-// and a query against a sibling world should return false.
 func componentInfoFor[T any](world *World) (*componentInfo, bool) {
 	elemType := reflect.TypeOf((*T)(nil)).Elem()
 	return world.registry.infoForType(elemType)
 }
 
-// mustComponentInfo is the panicking variant used by write paths where
-// targeting a world that does not own the column is a programming error
-// worth surfacing loudly.
 func mustComponentInfo[T any](world *World) *componentInfo {
 	elemType := reflect.TypeOf((*T)(nil)).Elem()
 	info, ok := world.registry.infoForType(elemType)

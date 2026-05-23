@@ -20,7 +20,6 @@ var cubemapMipgenShader string
 //go:embed filter_envmap.wgsl
 var filterEnvmapShader string
 
-// IBL grid sizes.
 const (
 	BrdfLutSize           uint32 = 256
 	IrradianceSize        uint32 = 64
@@ -31,13 +30,6 @@ const (
 	ProceduralCubemapSize uint32 = 1024
 )
 
-// IBL owns every GPU resource the image-based-lighting pipeline
-// needs: the pre-integrated BRDF LUT, the captured environment
-// cubemap (with full mip chain), the Lambertian-filtered
-// irradiance cubemap, and the GGX-prefiltered specular cubemap.
-// One-time generation at startup; the mesh fragment shader
-// samples these every frame to evaluate ambient diffuse + ambient
-// specular.
 type IBL struct {
 	BrdfLut         *wgpu.Texture
 	BrdfLutView     *wgpu.TextureView
@@ -50,17 +42,10 @@ type IBL struct {
 	Sampler         *wgpu.Sampler
 }
 
-// IBLResource is the typed wrapper apps put on the engine world
-// so passes can look the bundle up via [ecs.MustResource].
 type IBLResource struct {
 	IBL *IBL
 }
 
-// NewIBL allocates every IBL texture and runs the four compute
-// dispatches that fill them: BRDF LUT integration, procedural sky
-// -> cubemap capture, cubemap mip generation, and Lambertian +
-// GGX environment filtering. Designed to be called once at
-// startup; results are reused every frame.
 func NewIBL(device *wgpu.Device, queue *wgpu.Queue) (*IBL, error) {
 	ibl := &IBL{}
 
@@ -101,18 +86,6 @@ func NewIBL(device *wgpu.Device, queue *wgpu.Queue) (*IBL, error) {
 	return ibl, nil
 }
 
-// Rebake re-runs the procedural sky capture + mip generation +
-// environment filter. The cubemap textures are reused (same size,
-// same format); the irradiance + prefiltered textures are
-// reallocated because [filterEnvironmentMap] currently creates
-// fresh outputs. Callers that cached IBL views must rebuild bind
-// groups after Rebake — meshPass invalidates via [InvalidateIBL].
-//
-// The BRDF LUT isn't recomputed — it's a static integral that
-// doesn't depend on the environment.
-//
-// Intended call site is a render command drained at frame setup
-// so the GPU work happens before any pass writes the swapchain.
 func (ibl *IBL) Rebake(device *wgpu.Device, queue *wgpu.Queue) error {
 	if ibl.PrefilteredView != nil {
 		ibl.PrefilteredView.Release()
@@ -143,7 +116,6 @@ func (ibl *IBL) Rebake(device *wgpu.Device, queue *wgpu.Queue) error {
 	return nil
 }
 
-// Release frees every GPU resource the IBL bundle owns.
 func (ibl *IBL) Release() {
 	if ibl.Sampler != nil {
 		ibl.Sampler.Release()
@@ -174,11 +146,6 @@ func (ibl *IBL) Release() {
 	}
 }
 
-// generateBrdfLut runs the BRDF LUT compute shader once into a
-// 256x256 rgba16float texture. RG channels hold the GGX
-// split-sum integration the IBL specular term reads; B holds the
-// Charlie sheen integration (unused by indigo today but cheap to
-// pre-compute alongside).
 func generateBrdfLut(ibl *IBL, device *wgpu.Device, queue *wgpu.Queue) error {
 	tex, err := device.CreateTexture(&wgpu.TextureDescriptor{
 		Label: "brdf lut",
@@ -289,7 +256,6 @@ func generateBrdfLut(ibl *IBL, device *wgpu.Device, queue *wgpu.Queue) error {
 	return nil
 }
 
-// proceduralUniform mirrors the WGSL ProceduralUniform struct.
 type proceduralUniform struct {
 	OutputSize uint32
 	Time       float32
@@ -297,10 +263,6 @@ type proceduralUniform struct {
 	Pad1       uint32
 }
 
-// captureProceduralCubemap allocates the 1024x1024x6 cubemap with
-// a full mip chain and runs the procedural sky shader to fill mip
-// 0 of all six faces. The mip chain itself is populated by
-// generateCubemapMipmaps in a follow-up pass.
 func captureProceduralCubemap(ibl *IBL, device *wgpu.Device, queue *wgpu.Queue) error {
 	mips := mipLevelCount(ProceduralCubemapSize)
 
@@ -462,9 +424,6 @@ type mipParams struct {
 	Pad2    uint32
 }
 
-// generateCubemapMipmaps fills mips 1..N of an existing cubemap
-// by sampling the previous mip via the bilinear sampler. One
-// compute dispatch per mip level.
 func generateCubemapMipmaps(cubemap *wgpu.Texture, device *wgpu.Device, queue *wgpu.Queue) error {
 	mipCount := mipLevelCount(ProceduralCubemapSize)
 	if mipCount <= 1 {
@@ -663,22 +622,6 @@ type filterParams struct {
 	SourceMipCount uint32
 }
 
-// filterEnvironmentMap allocates the irradiance + prefiltered
-// cubemaps and runs the filter compute shader twice: once with
-// the Lambertian distribution (writes irradiance mip 0) and once
-// per mip level with the GGX distribution at the roughness
-// matching that mip.
-//
-// Uses its own sampler — NOT the shared [IBL.Sampler] — because
-// the GGX importance-sampling math inside filter_envmap.wgsl
-// requests mip levels up to log2(SourceWidth) (typically 10 for
-// a 1024 cubemap) when roughness approaches 1.0. The shared
-// sampler clamps LOD at PrefilteredMipLevels (5) so the mesh
-// pass can't accidentally read past the prefiltered chain — that
-// clamp silently blocks the filter pass from sampling the high
-// mips of the SOURCE cubemap, collapsing the per-mip filter
-// quality and making rough surfaces look identical to shinier
-// ones.
 func filterEnvironmentMap(ibl *IBL, device *wgpu.Device, queue *wgpu.Queue) error {
 	filterSampler, err := device.CreateSampler(&wgpu.SamplerDescriptor{
 		Label:         "ibl filter pass sampler",
@@ -949,10 +892,6 @@ func filterEnvironmentMap(ibl *IBL, device *wgpu.Device, queue *wgpu.Queue) erro
 	return nil
 }
 
-// mipLevelCount returns the number of mip levels needed to walk
-// `size` down to 1x1. Matches asset.mipLevelCount but lives in
-// the pass package so the IBL setup doesn't pull the asset
-// package in.
 func mipLevelCount(size uint32) uint32 {
 	if size <= 1 {
 		return 1

@@ -9,33 +9,17 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 )
 
-// SlotBinding wires a pass-local slot name to a graph resource. The graph
-// uses the pair to resolve resources during execute, compute the
-// first-write set that drives clear-vs-load, and build the dependency
-// DAG for the topological sort.
 type SlotBinding struct {
 	Slot       string
 	ResourceID ResourceID
 }
 
-// passEntry is the graph's per-pass record: the user-supplied [Pass] plus
-// the wiring from its slot names to graph resources and the per-frame
-// read-slot version snapshot used to drive bind-group invalidation.
-//
-// Only Read-slot versions are tracked. Bind groups bind reads;
-// attachments don't. Diffing every slot would invalidate present's
-// bind group every frame because the swapchain (a write-only output)
-// bumps its version on each frame's external-texture refresh.
 type passEntry struct {
 	pass         *Pass
 	bindings     map[string]ResourceID
 	lastVersions map[ResourceID]uint64
 }
 
-// Graph is the data-oriented render graph. It owns the resource table
-// and a list of passes. [Compile] topologically sorts passes by their
-// read/write dependencies, computes the first-write set for clear ops,
-// and allocates any unallocated transient textures.
 type Graph struct {
 	Resources Resources
 
@@ -45,13 +29,10 @@ type Graph struct {
 	compiled       bool
 }
 
-// NewGraph returns an empty graph.
 func NewGraph() *Graph {
 	return &Graph{clearOps: make(map[ClearKey]struct{})}
 }
 
-// ResourceByName returns the id of the first resource whose descriptor
-// has the given name, or [ResourceID](0) if there is none.
 func (g *Graph) ResourceByName(name string) ResourceID {
 	for index := range g.Resources.Descriptors {
 		if g.Resources.Descriptors[index].Name == name {
@@ -61,27 +42,16 @@ func (g *Graph) ResourceByName(name string) ResourceID {
 	return 0
 }
 
-// AddColorTexture registers a color texture in the graph and returns
-// its id. Set kind to [ResourceKindExternalColor] for the swapchain
-// (the caller refreshes the view each frame); use
-// [ResourceKindTransientColor] for graph-allocated intermediates like
-// scene_color. Transient textures registered before [Compile] are
-// auto-allocated during compile; registering after compile requires
-// re-compiling.
 func (g *Graph) AddColorTexture(descriptor ResourceDescriptor) ResourceID {
 	g.compiled = false
 	return g.Resources.Register(descriptor)
 }
 
-// AddDepthTexture registers a depth texture.
 func (g *Graph) AddDepthTexture(descriptor ResourceDescriptor) ResourceID {
 	g.compiled = false
 	return g.Resources.Register(descriptor)
 }
 
-// AddPass registers a pass with its slot bindings. The pass's declared
-// [Pass.Reads] and [Pass.Writes] are slot names; every slot they
-// reference must be bound here.
 func (g *Graph) AddPass(pass *Pass, bindings []SlotBinding) error {
 	indexed := make(map[string]ResourceID, len(bindings))
 	for _, binding := range bindings {
@@ -106,18 +76,6 @@ func (g *Graph) AddPass(pass *Pass, bindings []SlotBinding) error {
 	return nil
 }
 
-// Compile freezes the graph for execution:
-//   - topologically sorts passes by their read/write dependencies
-//   - records the first-write set that drives clear-vs-load
-//   - allocates any unallocated transient textures against device
-//
-// The dependency rules: a pass that reads resource R depends on the
-// most recent pass that wrote R; a pass that writes resource R after
-// some other pass also wrote R depends on the previous writer
-// (write-after-write ordering). Stable insertion-order tiebreak keeps
-// the schedule predictable when passes are independent.
-//
-// Returns an error on a dependency cycle.
 func (g *Graph) Compile(device *wgpu.Device) error {
 	order, err := g.topoSort()
 	if err != nil {
@@ -151,9 +109,6 @@ func (g *Graph) Compile(device *wgpu.Device) error {
 	return nil
 }
 
-// topoSort builds a dependency DAG from the passes' Reads/Writes lists
-// and returns the topological execution order (Kahn's algorithm with
-// stable insertion-order tiebreak). Errors on a cycle.
 func (g *Graph) topoSort() ([]int, error) {
 	n := len(g.passes)
 	edges := make([][]int, n)
@@ -221,10 +176,6 @@ func (g *Graph) topoSort() ([]int, error) {
 	return order, nil
 }
 
-// allocateMissingTransients creates GPU textures for any transient
-// resources whose handle is still empty. Already-allocated transients
-// are left alone, so calling [Compile] repeatedly does not churn
-// device resources.
 func (g *Graph) allocateMissingTransients(device *wgpu.Device) error {
 	for index := range g.Resources.Descriptors {
 		descriptor := &g.Resources.Descriptors[index]
@@ -277,16 +228,11 @@ func (g *Graph) createTransient(device *wgpu.Device, index int) error {
 	return nil
 }
 
-// AllocateTransients (re)allocates every transient texture. Releases
-// all owned handles first, so it's the right call after a resize. For
-// initial allocation, [Compile] is enough.
 func (g *Graph) AllocateTransients(device *wgpu.Device) error {
 	g.Resources.ReleaseOwned()
 	return g.allocateMissingTransients(device)
 }
 
-// ResizeTransients updates the recorded size on every transient
-// texture and reallocates them. External resources are untouched.
 func (g *Graph) ResizeTransients(device *wgpu.Device, width, height uint32) error {
 	for index := range g.Resources.Descriptors {
 		descriptor := &g.Resources.Descriptors[index]
@@ -299,16 +245,6 @@ func (g *Graph) ResizeTransients(device *wgpu.Device, width, height uint32) erro
 	return g.AllocateTransients(device)
 }
 
-// Execute runs every pass in topological order. Before each pass's
-// Prepare, the graph compares the current versions of its read slots
-// to the per-pass snapshot it captured last frame; on any mismatch it
-// calls [Pass.InvalidateBindGroups] so the pass can drop cached bind
-// groups whose backing views are stale. Write-only slots (attachments)
-// are not part of bind groups and do not trigger invalidation.
-//
-// The caller must provide the device, queue, world, and a command
-// encoder; the graph records into the encoder but does not finish or
-// submit it (the renderer does that).
 func (g *Graph) Execute(device *wgpu.Device, queue *wgpu.Queue, world *ecs.World, encoder *wgpu.CommandEncoder) error {
 	if !g.compiled {
 		return fmt.Errorf("render: graph not compiled")
@@ -357,8 +293,6 @@ func (g *Graph) Execute(device *wgpu.Device, queue *wgpu.Queue, world *ecs.World
 	return nil
 }
 
-// Release frees every owned GPU object: transient textures plus
-// per-pass state via [Pass.Release].
 func (g *Graph) Release() {
 	for _, entry := range g.passes {
 		if entry.pass.Release != nil {

@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// Sprite contains a heap pointer so the GC must track its reference inside
-// the archetype's column. If the column allocates as []byte the pointer is
-// invisible to the marker and the underlying object can be freed while still
-// "owned" by an entity. This test forces a GC cycle between spawn and read.
 type Sprite struct {
 	Name *string
 }

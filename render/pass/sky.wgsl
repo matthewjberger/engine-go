@@ -125,11 +125,6 @@ fn fbm(p: vec3<f32>, octaves: i32) -> f32 {
     return value;
 }
 
-// apply_clouds layers fbm-driven cloud cover over an upper-
-// hemisphere sky color. dir is the world-space view direction,
-// time drives slow horizontal drift, sun_direction is normalized
-// and used for the cloud lighting term. Returns the sky color
-// blended with shaded clouds for height > 0.
 fn apply_clouds(base: vec3<f32>, dir: vec3<f32>, sun_direction: vec3<f32>, time: f32) -> vec3<f32> {
     let height = dir.y;
     if (height <= 0.0) {

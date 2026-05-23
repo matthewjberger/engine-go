@@ -10,15 +10,8 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 )
 
-// MaxJointsPerSkin caps the joint count any one skinned mesh can
-// carry. 128 fits typical character rigs without inflating the
-// per-frame upload cost; rigs that exceed it need to be split.
 const MaxJointsPerSkin = 128
 
-// SkinnedMeshVertex extends MeshVertex with the two glTF skinning
-// attributes (JOINTS_0 + WEIGHTS_0). Stored as a parallel layout
-// rather than a wider MeshVertex so the static mesh path keeps its
-// smaller stride for non-skinned geometry.
 type SkinnedMeshVertex struct {
 	Position     [4]float32
 	Normal       [4]float32
@@ -29,27 +22,13 @@ type SkinnedMeshVertex struct {
 	JointWeights [4]float32
 }
 
-// SkinnedMeshHandle is an opaque index into the skinned mesh
-// registry. Distinct from [MeshHandle] so the static mesh path
-// can't accidentally pull a skinned buffer.
 type SkinnedMeshHandle uint32
 
-// Skin is the static rig binding for one skinned mesh instance:
-// the joint entities whose GlobalTransform matrices drive the pose
-// and the per-joint inverse bind matrices. It owns no GPU buffers.
-//
-// The skinning compute gathers every skin's joints into shared
-// engine-wide bone / inverse-bind / joint-matrix buffers and runs
-// one dispatch over all joints; the vertex shader indexes its
-// slice of the shared joint-matrix buffer via a per-entity joint
-// offset.
 type Skin struct {
 	Joints              []ecs.Entity
 	InverseBindMatrices []mgl32.Mat4
 }
 
-// NewSkin allocates a Skin sized for the given joint count. Caller
-// fills Joints + InverseBindMatrices before the first frame.
 func NewSkin(jointCount int) (*Skin, error) {
 	if jointCount <= 0 || jointCount > MaxJointsPerSkin {
 		return nil, fmt.Errorf("skin: joint count %d outside [1, %d]", jointCount, MaxJointsPerSkin)
@@ -68,19 +47,14 @@ type skinnedMeshEntry struct {
 	CpuVertices []SkinnedMeshVertex
 }
 
-// SkinnedMeshAssets is the per-renderer registry of skinned mesh
-// GPU buffers. Parallel to [MeshAssets].
 type SkinnedMeshAssets struct {
 	entries []skinnedMeshEntry
 }
 
-// NewSkinnedMeshAssets returns an empty registry.
 func NewSkinnedMeshAssets() *SkinnedMeshAssets {
 	return &SkinnedMeshAssets{}
 }
 
-// Register uploads the vertex slice to a GPU buffer and returns
-// the handle assigned to it.
 func (assets *SkinnedMeshAssets) Register(device *wgpu.Device, name string, vertices []SkinnedMeshVertex) (SkinnedMeshHandle, error) {
 	if len(vertices) == 0 {
 		return 0, fmt.Errorf("skinned mesh %q: empty vertex slice", name)
@@ -108,8 +82,6 @@ func (assets *SkinnedMeshAssets) Register(device *wgpu.Device, name string, vert
 	return handle, nil
 }
 
-// Lookup returns the entry for handle. Returns false when the
-// handle is out of range.
 func (assets *SkinnedMeshAssets) Lookup(handle SkinnedMeshHandle) (*skinnedMeshEntry, bool) {
 	if int(handle) >= len(assets.entries) {
 		return nil, false
@@ -117,7 +89,6 @@ func (assets *SkinnedMeshAssets) Lookup(handle SkinnedMeshHandle) (*skinnedMeshE
 	return &assets.entries[handle], true
 }
 
-// Release frees every GPU buffer the registry owns.
 func (assets *SkinnedMeshAssets) Release() {
 	for index := range assets.entries {
 		if assets.entries[index].Vertices != nil {
@@ -128,16 +99,10 @@ func (assets *SkinnedMeshAssets) Release() {
 	assets.entries = nil
 }
 
-// SkinnedMeshAssetsResource exposes the registry as an ECS
-// resource so passes can look up vertex buffers by handle.
 type SkinnedMeshAssetsResource struct {
 	Assets *SkinnedMeshAssets
 }
 
-// SkinnedMesh tags an entity as a rigged mesh. Mesh is the handle
-// into [SkinnedMeshAssets]; Skin owns the per-frame joint matrix
-// array the vertex shader samples. Distinct from [RenderMesh] so
-// the static and skinned passes iterate disjoint sets.
 type SkinnedMesh struct {
 	Mesh SkinnedMeshHandle
 	Skin *Skin

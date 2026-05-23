@@ -1,8 +1,3 @@
-// Per-frame HUD refresh systems: layout, mode buttons, menu
-// visibility, hover painting, entity tree, inspector + caret.
-// Driven by [HudContext] which is rebuilt every frame in
-// [newHudContext]. All functions in this file are methods on
-// *HudContext or pure helpers operating on (world, entity) pairs.
 package main
 
 import (

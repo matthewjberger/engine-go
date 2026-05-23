@@ -11,9 +11,6 @@ import (
 	"github.com/matthewjberger/indigo/render/asset"
 )
 
-// createViewProjLayout returns the group 0 bind-group layout: one
-// uniform buffer holding the camera's view * projection matrix,
-// visible to the vertex shader.
 func createViewProjLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	layout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "mesh view_proj bind group layout",
@@ -29,10 +26,6 @@ func createViewProjLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	return layout, nil
 }
 
-// createGlobalBgLayout returns the group 1 bind-group layout: the
-// clustered-lighting bindings (lights / light_grid / light_indices
-// / cluster_uniforms / view_matrix) plus the shared material
-// texture arrays and sampler. All fragment-visible.
 func createGlobalBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	layout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "mesh global bind group layout",
@@ -150,12 +143,6 @@ func createGlobalBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	return layout, nil
 }
 
-// createHandleBgLayout returns the group 2 bind-group layout: the
-// per-handle storage buffers (models / material_indices /
-// entity_ids). All vertex-only — the vertex stage flat-interpolates
-// the material_index into the fragment shader, which then looks the
-// MaterialGPU up in the global registry buffer bound at group 1
-// binding 8.
 func createHandleBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	layout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "mesh per-handle bind group layout",
@@ -188,9 +175,6 @@ func createHandleBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	return layout, nil
 }
 
-// createIblBgLayout returns the group 3 bind-group layout: the
-// irradiance cube, prefiltered specular cube, BRDF LUT, and IBL
-// sampler. All fragment-visible.
 func createIblBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	layout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "mesh ibl bind group layout",
@@ -232,11 +216,6 @@ func createIblBgLayout(device *wgpu.Device) (*wgpu.BindGroupLayout, error) {
 	return layout, nil
 }
 
-// createMeshPipeline builds the render pipeline that ties the four
-// bind-group layouts to the WGSL shader module. The pipeline owns
-// the only reference to the shader module; the caller can release
-// the shader after this function returns. The pipeline layout is
-// owned exclusively by this pipeline and released here too.
 func createMeshPipeline(
 	device *wgpu.Device,
 	surfaceFormat wgpu.TextureFormat,
@@ -330,8 +309,6 @@ func createMeshPipeline(
 	return pipeline, nil
 }
 
-// createViewProjBuffer returns a 64-byte uniform buffer that the
-// camera writes its view * projection matrix into each frame.
 func createViewProjBuffer(device *wgpu.Device) (*wgpu.Buffer, error) {
 	buf, err := device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "mesh view_proj buffer",
@@ -344,8 +321,6 @@ func createViewProjBuffer(device *wgpu.Device) (*wgpu.Buffer, error) {
 	return buf, nil
 }
 
-// createViewProjBindGroup wraps the view_proj uniform buffer in a
-// group 0 bind group with the matching layout.
 func createViewProjBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, buf *wgpu.Buffer) (*wgpu.BindGroup, error) {
 	bg, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
 		Label:  "mesh view_proj bind group",
@@ -363,11 +338,6 @@ func createViewProjBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, 
 	return bg, nil
 }
 
-// createGlobalBindGroup builds the group 1 bind group from the
-// cluster compute resources + the material texture arrays + the
-// global material registry. The registry buffer can grow at
-// runtime; when it does, the caller is responsible for releasing
-// this bind group and rebuilding via this helper.
 func createGlobalBindGroup(
 	device *wgpu.Device,
 	layout *wgpu.BindGroupLayout,
@@ -409,8 +379,6 @@ func createGlobalBindGroup(
 	return bg, nil
 }
 
-// createIblBindGroup wraps the IBL bundle's textures + sampler in
-// the group 3 bind group the fragment shader reads from.
 func createIblBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, ibl *IBL) (*wgpu.BindGroup, error) {
 	bg, err := device.CreateBindGroup(&wgpu.BindGroupDescriptor{
 		Label:  "mesh ibl bind group",

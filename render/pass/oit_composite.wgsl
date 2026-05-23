@@ -1,6 +1,3 @@
-// Weighted-blended OIT resolve. accum.rgb / accum.a is the
-// weighted-average color; 1 - reveal is the over-alpha used to
-// blend into scene_color.
 
 @group(0) @binding(0) var accum_texture: texture_2d<f32>;
 @group(0) @binding(1) var accum_sampler: sampler;

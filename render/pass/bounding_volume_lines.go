@@ -7,11 +7,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// UpdateBoundingVolumeLines emits one wireframe AABB per entity that
-// has a RenderMesh + GlobalTransform when [render.Graphics.ShowBounds]
-// is true. Reads the mesh's local-space AABB from MeshAssets and
-// pushes 12 world-space line segments into the [Lines] resource for
-// the next line-pass frame.
 func UpdateBoundingVolumeLines(world *ecs.World) {
 	settings, ok := ecs.Resource[render.Graphics](world)
 	if !ok || !settings.ShowBounds {

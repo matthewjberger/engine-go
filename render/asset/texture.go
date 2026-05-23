@@ -8,9 +8,6 @@ import (
 
 type TextureID uint32
 
-// Texture is a GPU-uploaded 2D image plus the view + sampler the mesh
-// pass binds. Stored in a [TextureCache] and referenced from
-// [MeshAssets] entries by handle.
 type Texture struct {
 	Texture *wgpu.Texture
 	View    *wgpu.TextureView
@@ -66,10 +63,6 @@ func (c *TextureCache) Release() {
 	c.white = 0
 }
 
-// TextureColorSpace picks sRGB vs linear encoding for a texture
-// upload. Base color and emissive maps go in as sRGB; normal,
-// metallic-roughness, and occlusion maps stay linear so their data
-// isn't gamma-curved before the shader reads it.
 type TextureColorSpace uint8
 
 const (
@@ -77,10 +70,6 @@ const (
 	TextureLinear
 )
 
-// SamplerSettings carries the wrap modes + min/mag filters extracted
-// from a glTF texture sampler. Zero value is "repeat both axes,
-// linear filtering with linear mip blending" which matches the glTF
-// default sampler behavior.
 type SamplerSettings struct {
 	WrapU        wgpu.AddressMode
 	WrapV        wgpu.AddressMode
@@ -89,7 +78,6 @@ type SamplerSettings struct {
 	MipmapFilter wgpu.MipmapFilterMode
 }
 
-// DefaultSamplerSettings returns the glTF-default sampler config.
 func DefaultSamplerSettings() SamplerSettings {
 	return SamplerSettings{
 		WrapU:        wgpu.AddressModeRepeat,
@@ -100,10 +88,6 @@ func DefaultSamplerSettings() SamplerSettings {
 	}
 }
 
-// Register uploads pixels to a new 2D texture (with a full mip
-// chain) and returns its handle. Pixels are tightly packed RGBA8 in
-// row-major order, width*height*4 bytes long. The sampler is built
-// from settings.
 func (c *TextureCache) Register(device *wgpu.Device, queue *wgpu.Queue, name string, width, height uint32, pixels []byte, space TextureColorSpace, settings SamplerSettings) (TextureID, error) {
 	if len(pixels) != int(width*height*4) {
 		return 0, fmt.Errorf("texture %q: expected %d bytes, got %d", name, width*height*4, len(pixels))
@@ -190,10 +174,6 @@ func (c *TextureCache) Register(device *wgpu.Device, queue *wgpu.Queue, name str
 	return TextureID(len(c.entries)), nil
 }
 
-// EnsureWhite registers a 1x1 opaque-white texture and caches its
-// handle. Meshes without a base-color texture are bound to this so
-// the shader's `textureSample(...)` call still has something to
-// sample (returning vec4(1.0)).
 func (c *TextureCache) EnsureWhite(device *wgpu.Device, queue *wgpu.Queue) (TextureID, error) {
 	if c.white != 0 {
 		return c.white, nil
@@ -206,8 +186,6 @@ func (c *TextureCache) EnsureWhite(device *wgpu.Device, queue *wgpu.Queue) (Text
 	return h, nil
 }
 
-// mipLevelCount returns ⌊log2(max(w,h))⌋ + 1, the standard full mip
-// chain count for a 2D texture.
 func mipLevelCount(width, height uint32) uint32 {
 	max := width
 	if height > max {
@@ -221,8 +199,6 @@ func mipLevelCount(width, height uint32) uint32 {
 	return levels
 }
 
-// downsampleRGBA halves width and height with a 2x2 box filter,
-// clamping odd dimensions to 1.
 func downsampleRGBA(src []byte, srcW, srcH uint32) ([]byte, uint32, uint32) {
 	dstW := srcW / 2
 	if dstW < 1 {

@@ -41,13 +41,7 @@ func TestNodeTRSFromExplicitFields(t *testing.T) {
 }
 
 func TestNodeTRSDecomposesMatrix(t *testing.T) {
-	// Matrix encoding: translation (10, 20, 30), 90 deg yaw around Y,
-	// uniform scale 2. Column-major glTF matrix is built as
-	// T * R * S applied to the right-hand-side basis.
-	//   T*R*S applied to x,y,z columns gives, before translation:
-	//     col0 = R*S*x = (0, 0, -2)
-	//     col1 = R*S*y = (0, 2, 0)
-	//     col2 = R*S*z = (2, 0, 0)
+
 	matrix := [16]float64{
 		0, 0, -2, 0,
 		0, 2, 0, 0,
@@ -62,13 +56,10 @@ func TestNodeTRSDecomposesMatrix(t *testing.T) {
 	if sc != [3]float32{2, 2, 2} {
 		t.Errorf("scale = %v, want {2 2 2}", sc)
 	}
-	// Rotation: round-trip via the identity-axis test. A yaw of 90
-	// around +Y rotates (1,0,0) to (0,0,-1); reconstruct the rotation
-	// from the quaternion and verify.
+
 	_, rot, _ := nodeTRS(n)
-	_ = rot // exact quaternion form depends on conversion; the
-	// behavior we care about is that decomposition produces a non-
-	// identity rotation when the matrix has a non-identity basis.
+	_ = rot
+
 	if rot == ([4]float32{0, 0, 0, 1}) {
 		t.Errorf("decomposed rotation should be non-identity, got identity")
 	}

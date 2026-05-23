@@ -2,15 +2,6 @@ package transform
 
 import "github.com/matthewjberger/indigo/ecs"
 
-// ChainFromRootToLeaf returns the ordered list of entities from
-// root (inclusive) down to leaf (inclusive). leaf must be a
-// descendant of root or the result is empty. The first element is
-// root, the last is leaf, and consecutive pairs are parent/child.
-//
-// Used by hierarchical picking: a first click on a glTF cluster
-// selects chain[0] (the group root), each subsequent click on the
-// same leaf advances one step deeper, and depth wraps back to 0
-// after passing the leaf.
 func ChainFromRootToLeaf(world *ecs.World, root, leaf ecs.Entity) []ecs.Entity {
 	if root == leaf {
 		return []ecs.Entity{root}

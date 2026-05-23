@@ -44,9 +44,6 @@ type oitMeshPassState struct {
 	aspectFn       func() float32
 }
 
-// AddOitMeshPass registers the weighted-OIT accumulation pass.
-// Writes accum (Rgba16Float, additive blend) + reveal (R8Unorm,
-// multiply-by-1-alpha) targets. Reads depth without writing it.
 func AddOitMeshPass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newOitMeshState(renderer.Device, renderer.AspectRatio)
 	if err != nil {
@@ -149,8 +146,7 @@ func newOitMeshState(device *wgpu.Device, aspect func() float32) (*oitMeshPassSt
 		DepthStencil: &wgpu.DepthStencilState{
 			Format:            render.DepthFormat,
 			DepthWriteEnabled: false,
-			// LessEqual lets transparent fragments co-planar with
-			// opaque geometry pass; Less would reject them.
+
 			DepthCompare: wgpu.CompareFunctionLessEqual,
 			StencilFront: wgpu.StencilFaceState{
 				Compare:     wgpu.CompareFunctionAlways,
@@ -172,8 +168,7 @@ func newOitMeshState(device *wgpu.Device, aspect func() float32) (*oitMeshPassSt
 			Targets: []wgpu.ColorTargetState{
 				{Format: render.HdrFormat, Blend: &accumBlend, WriteMask: wgpu.ColorWriteMaskAll},
 				{Format: wgpu.TextureFormatR8Unorm, Blend: &revealBlend, WriteMask: wgpu.ColorWriteMaskRed},
-				// entity_id: no blend, red-only write. Last-
-				// written transparent fragment wins per-pixel.
+
 				{Format: render.EntityIdFormat, WriteMask: wgpu.ColorWriteMaskRed},
 			},
 		},
@@ -376,11 +371,6 @@ func oitMeshRelease(s any) {
 	}
 }
 
-// ---------------------------------------------------------------
-// OIT composite pass: full-screen blend of accum/reveal into
-// scene_color.
-// ---------------------------------------------------------------
-
 type oitCompositePassState struct {
 	pipeline        *wgpu.RenderPipeline
 	bindGroupLayout *wgpu.BindGroupLayout
@@ -390,8 +380,6 @@ type oitCompositePassState struct {
 	lastRevealView  *wgpu.TextureView
 }
 
-// AddOitCompositePass resolves accum + reveal into scene_color
-// via standard alpha blending.
 func AddOitCompositePass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newOitCompositeState(renderer.Device)
 	if err != nil {

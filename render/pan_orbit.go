@@ -11,17 +11,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// PanOrbitController is the data half of an arc-ball / pan-orbit
-// camera controller. Held as a typed resource on the engine world.
-// [UpdatePanOrbitCamera] reads it (together with [Input] and the
-// surface size) and writes the result to the [Camera] resource.
-//
-// Two sets of fields: the current pose (Focus / Radius / Yaw /
-// Pitch) the camera renders from this frame, and the target pose
-// the controller is interpolating toward. The targets are what
-// input mutates; smoothing pulls the current toward them.
-//
-// Controls: orbit on left drag, pan on right drag, zoom on scroll.
 type PanOrbitController struct {
 	Focus  transform.Vec3
 	Radius float32
@@ -47,9 +36,6 @@ type PanOrbitController struct {
 	ZoomUpper  float32
 }
 
-// DefaultPanOrbitController returns a controller orbiting the world
-// origin at radius 6, with limits and sensitivities tuned for the
-// engine demo grid.
 func DefaultPanOrbitController() PanOrbitController {
 	pitch := float32(math.Pi / 8)
 	return PanOrbitController{
@@ -78,12 +64,6 @@ func DefaultPanOrbitController() PanOrbitController {
 	}
 }
 
-// UpdatePanOrbitCamera consumes a frame of [Input] from the engine
-// world, advances the [PanOrbitController]'s target pose (orbit, pan,
-// zoom), smooths the current pose toward the target, and writes the
-// derived eye + target back to the [Camera] resource. Reads delta and
-// viewport from the [window.Window] resource so the system signature
-// is (*World), the shape an [ecs.Schedule] expects.
 func UpdatePanOrbitCamera(world *ecs.World) {
 	w := ecs.MustResource[window.Window](world)
 	controller := ecs.MustResource[PanOrbitController](world)
@@ -106,9 +86,6 @@ func UpdatePanOrbitCamera(world *ecs.World) {
 	writePanOrbitCamera(controller, camera)
 }
 
-// mouseCapturedByOverlay reports whether a gizmo handle or HUD
-// widget is receiving this frame's pointer. Pan-orbit skips input
-// in that case so left-button drag of a handle doesn't also orbit.
 func mouseCapturedByOverlay(world *ecs.World) bool {
 	if ecs.HasResource[*Gizmos](world) {
 		g := *ecs.MustResource[*Gizmos](world)
@@ -189,8 +166,6 @@ func writePanOrbitCamera(controller *PanOrbitController, camera *Camera) {
 	camera.Up = mgl32.Vec3{0, 1, 0}
 }
 
-// computePanOrbitPose returns the camera position and orientation
-// quaternion for given orbit parameters.
 func computePanOrbitPose(focus transform.Vec3, yaw, pitch, radius float32) (transform.Vec3, transform.Quat) {
 	yawQuat := mgl32.QuatRotate(yaw, mgl32.Vec3{0, 1, 0})
 	pitchQuat := mgl32.QuatRotate(-pitch, mgl32.Vec3{1, 0, 0})

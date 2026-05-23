@@ -42,10 +42,6 @@ type skinnedMeshOitState struct {
 	instancesBuffer *wgpu.Buffer
 }
 
-// AddSkinnedMeshOitPass renders blend-mode skinned meshes into the
-// weighted-OIT accum / reveal / entity_id targets, reading each
-// entity's slice of the shared joint-matrix buffer. Runs after the
-// static OIT mesh pass and before the OIT composite.
 func AddSkinnedMeshOitPass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newSkinnedMeshOitState(renderer.Device, renderer.AspectRatio)
 	if err != nil {

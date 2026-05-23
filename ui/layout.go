@@ -7,25 +7,6 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// LayoutSystem resolves every UI Node's screen-space rectangle each
-// frame. Reads the viewport size from the UI world's [window.Window]
-// resource, walks UI entities root-first, and writes the result back
-// into Node.Resolved so downstream passes can position quads + text
-// directly.
-//
-// Layout policy:
-//   - A root Node (no UI [Parent]) is placed using its [Anchor] and
-//     the (X, Y) offset from that anchor's reference corner.
-//   - A child Node sits at (parent.Resolved.X + padding + X,
-//     parent.Resolved.Y + padding + Y) by default.
-//   - A parent with LayoutRow / LayoutColumn overrides the child's
-//     intra-parent X/Y: children stack along the axis, separated by
-//     parent.Spacing, with parent.Padding from the parent's edges.
-//
-// The walk is two passes: a depth pass that sorts entities by tree
-// depth so parents resolve before children, then a placement pass.
-// Depth is recomputed per frame since the tree is small and parent
-// links can change.
 func LayoutSystem(world *ecs.World) {
 	state := ecs.MustResource[LayoutState](world)
 	if !state.Dirty {
@@ -55,9 +36,6 @@ func LayoutSystem(world *ecs.World) {
 		state.Children[parent.Entity] = append(state.Children[parent.Entity], entity)
 	})
 
-	// Children arrive in archetype-then-slot order; sort by entity
-	// ID (= spawn order) so siblings stay in builder order even
-	// when they land in different archetypes.
 	for parent := range state.Children {
 		kids := state.Children[parent]
 		sort.Slice(kids, func(i, j int) bool { return kids[i].ID < kids[j].ID })
@@ -80,9 +58,6 @@ func LayoutSystem(world *ecs.World) {
 	}
 }
 
-// LayoutState is per-frame layout scratch + a Dirty flag.
-// [LayoutSystem] skips when Dirty is false; geometry mutations call
-// [MarkLayoutDirty].
 type LayoutState struct {
 	Roots    []ecs.Entity
 	Order    []ecs.Entity
@@ -91,7 +66,6 @@ type LayoutState struct {
 	Dirty    bool
 }
 
-// NewLayoutState returns an empty layout scratch. Dirty starts true.
 func NewLayoutState() LayoutState {
 	return LayoutState{
 		Depths:   make(map[ecs.Entity]int, 16),
@@ -100,7 +74,6 @@ func NewLayoutState() LayoutState {
 	}
 }
 
-// MarkLayoutDirty forces [LayoutSystem] to re-run next frame.
 func MarkLayoutDirty(world *ecs.World) {
 	if !ecs.HasResource[LayoutState](world) {
 		return

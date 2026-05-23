@@ -1,8 +1,3 @@
-// Weighted-blended OIT for transparent skinned meshes. Vertex
-// stage blends position + normal by the entity's joint slice of
-// the shared joint-matrix buffer; fragment stage shades with the
-// same Lambert + ambient model as the opaque skinned pass and
-// writes accum (One+One) / reveal (Zero+OneMinusSrc) / entity_id.
 
 struct ViewProjOit {
     view_proj: mat4x4<f32>,

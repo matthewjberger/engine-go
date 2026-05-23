@@ -1,8 +1,3 @@
-// Cluster bounds compute pass: builds the view-space AABB of every
-// cluster in the 16x9x24 frustum-aligned grid. One workgroup
-// invocation per cluster. Re-runs only when the camera (projection
-// / screen size) changes; the AABBs are reused frame-to-frame
-// until then.
 
 struct ClusterUniforms {
     inverse_projection: mat4x4<f32>,

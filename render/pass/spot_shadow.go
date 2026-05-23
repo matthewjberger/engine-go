@@ -15,23 +15,14 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// MaxSpotShadows caps the spotlights that can write into the atlas
-// per frame. The reference engine packs by shelf; we use a fixed
-// 2x2 grid (1024x1024 per slot in a 2048 atlas).
 const MaxSpotShadows = 4
 
-// SpotShadowAtlasSize is the side length of the single depth atlas
-// shared by every shadow-casting spot light this frame.
 const SpotShadowAtlasSize uint32 = 2048
 
-// SpotShadowSlotsPerRow controls the atlas layout. 2 -> 2x2 grid.
 const SpotShadowSlotsPerRow uint32 = 2
 
-// SpotShadowSlotSize is the side length of one atlas slot.
 const SpotShadowSlotSize uint32 = SpotShadowAtlasSize / SpotShadowSlotsPerRow
 
-// SpotShadow owns the spotlight shadow atlas + per-slot uniform
-// buffers + the mesh-side uniform array the mesh shader samples.
 type SpotShadow struct {
 	Texture       *wgpu.Texture
 	AtlasView     *wgpu.TextureView
@@ -42,9 +33,6 @@ type SpotShadow struct {
 	SlotEntities  [MaxSpotShadows]ecs.Entity
 }
 
-// slotEntity returns the ECS entity assigned to a given atlas slot
-// this frame. Used by the mesh pass to thread shadow_index through
-// each light's GPU record.
 func (shadow *SpotShadow) slotEntity(index uint32) ecs.Entity {
 	if index >= uint32(len(shadow.SlotEntities)) {
 		return ecs.Entity{}
@@ -52,7 +40,6 @@ func (shadow *SpotShadow) slotEntity(index uint32) ecs.Entity {
 	return shadow.SlotEntities[index]
 }
 
-// SpotShadowResource wraps SpotShadow for engine-world storage.
 type SpotShadowResource struct {
 	Shadow *SpotShadow
 }
@@ -79,8 +66,6 @@ type spotShadowMeshUniform struct {
 	Pad2    uint32
 }
 
-// NewSpotShadow builds the depth atlas + sampler + per-slot
-// view-projection uniform buffers + the mesh-side uniform buffer.
 func NewSpotShadow(device *wgpu.Device) (*SpotShadow, error) {
 	shadow := &SpotShadow{}
 	tex, err := device.CreateTexture(&wgpu.TextureDescriptor{
@@ -164,10 +149,6 @@ type spotShadowCandidate struct {
 	DistanceSq float32
 }
 
-// AddSpotShadowPass registers a pass that gathers spotlight
-// candidates, computes per-light view-projection matrices, packs
-// them into atlas slots, and renders each slot's geometry to the
-// atlas with a viewport/scissor restricted to that slot.
 func AddSpotShadowPass(renderer *render.Renderer, shadow *SpotShadow) (*render.Pass, error) {
 	shaderModule, err := renderer.Device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "spot shadow shader",
@@ -363,13 +344,6 @@ func spotShadowPrepare(s any, context *render.PassContext) error {
 		atlasOffY := float32(row) / float32(SpotShadowSlotsPerRow)
 		atlasScale := float32(1) / float32(SpotShadowSlotsPerRow)
 
-		// Fold the slot's atlas position into the shadow-pass
-		// view-projection. clip.xy (=[-1,1] over the slot's
-		// rendered geometry) gets scaled + translated so the slot
-		// occupies its 2x2 cell of the atlas rather than the
-		// entire attachment. Avoids needing SetViewport /
-		// SetScissorRect, which the wasm wgpu binding doesn't
-		// expose.
 		atlasBiasX := 2*atlasOffX - 1 + atlasScale
 		atlasBiasY := 1 - 2*atlasOffY - atlasScale
 		atlasTransform := mgl32.Mat4{
@@ -403,11 +377,6 @@ func spotShadowPrepare(s any, context *render.PassContext) error {
 	return nil
 }
 
-// drawNonLightInstances issues per-instance draws over a bucket,
-// skipping any instance whose ECS entity has a Light component.
-// Without this, the spotlight's own orb mesh (sitting at the
-// shadow camera's near plane) projects as a giant occluder and
-// shadows everything below the light.
 func drawNonLightInstances(passEnc *wgpu.RenderPassEncoder, bucket *handleInstances, vertexCount uint32, lightMask ecs.Mask, world *ecs.World) {
 	start := uint32(0)
 	for slot, entity := range bucket.slotEntity {
@@ -441,9 +410,6 @@ func spotShadowRelease(s any) {
 	}
 }
 
-// spotPerspectiveZO is a right-handed perspective with [0,1] clip
-// depth, matching WebGPU's NDC. Mirror of mgl32.Perspective but
-// with z mapped to [0, 1] instead of [-1, 1].
 func spotPerspectiveZO(fovYRadians, aspect, near, far float32) mgl32.Mat4 {
 	f := float32(1.0 / math.Tan(float64(fovYRadians)/2.0))
 	return mgl32.Mat4{

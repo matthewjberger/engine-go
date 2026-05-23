@@ -11,12 +11,8 @@ import (
 //go:embed outline.wgsl
 var outlineShader string
 
-// OutlineColor is the default outline tint applied to selected
-// entities.
 var OutlineColor = [4]float32{1.0, 0.45, 0.0, 1.0}
 
-// OutlineWidth is the default outline thickness, measured in pixels
-// of the selection-mask texture.
 const OutlineWidth float32 = 2.0
 
 type outlineParams struct {
@@ -40,10 +36,6 @@ type outlinePassState struct {
 	aspectFn func() (uint32, uint32)
 }
 
-// NewOutlinePass builds the selection-outline post-process pass.
-// Reads the selection_mask texture, performs an 8-neighbor max-pool
-// dilation, and writes pixels along the dilated boundary into the
-// scene_color attachment using alpha blending.
 func NewOutlinePass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, viewportSize func() (uint32, uint32)) (*render.Pass, error) {
 	state := &outlinePassState{
 		color:    OutlineColor,

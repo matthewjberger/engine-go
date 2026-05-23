@@ -4,12 +4,6 @@ package ecs
 
 import "unsafe"
 
-// Iter1 walks every entity that has components A
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter1[A any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -31,12 +25,6 @@ func Iter1[A any](world *World, extraInclude, exclude Mask, callback func(entity
 	}
 }
 
-// Iter2 walks every entity that has components A, B
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter2[A, B any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -60,12 +48,6 @@ func Iter2[A, B any](world *World, extraInclude, exclude Mask, callback func(ent
 	}
 }
 
-// Iter3 walks every entity that has components A, B, C
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter3[A, B, C any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -91,12 +73,6 @@ func Iter3[A, B, C any](world *World, extraInclude, exclude Mask, callback func(
 	}
 }
 
-// Iter4 walks every entity that has components A, B, C, D
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter4[A, B, C, D any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -124,12 +100,6 @@ func Iter4[A, B, C, D any](world *World, extraInclude, exclude Mask, callback fu
 	}
 }
 
-// Iter5 walks every entity that has components A, B, C, D, E
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter5[A, B, C, D, E any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D, e *E)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -159,12 +129,6 @@ func Iter5[A, B, C, D, E any](world *World, extraInclude, exclude Mask, callback
 	}
 }
 
-// Iter6 walks every entity that has components A, B, C, D, E, F
-// (plus extraInclude, minus exclude) and invokes callback with typed
-// pointers to each. Mutations through those pointers do not auto-stamp
-// the change tick. The same structural-mutation constraint as
-// [World.ForEach] applies: defer Spawn/Despawn/Add/Remove via the
-// command buffer.
 func Iter6[A, B, C, D, E, F any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D, e *E, f *F)) {
 	world.enterIter()
 	defer world.leaveIter()

@@ -37,10 +37,6 @@ type gizmoPassState struct {
 	aspectFn        func() float32
 }
 
-// NewGizmoPass builds the 2D gizmo overlay pass: a screen-space
-// line/triangle rasterizer driven entirely by per-frame CPU
-// projection of the selected entity's world axes. No 3D geometry
-// is involved; this is a UI-layer overlay.
 func NewGizmoPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32) (*render.Pass, error) {
 	state := &gizmoPassState{aspectFn: aspect}
 
@@ -348,13 +344,6 @@ func makeTipSquare(at mgl32.Vec2, color [4]float32, side float32) gizmoLineInsta
 	}
 }
 
-// makeTipArrow returns one instance configured with kind=1 (filled
-// triangle): the WGSL vertex shader collapses three of the six
-// vertices onto the tip, leaving a single triangle whose base sits
-// at the axis line's endpoint and whose apex sits headLength
-// further along the axis direction. The arrowhead therefore
-// EXTENDS BEYOND the line, instead of overlapping its last several
-// pixels.
 func makeTipArrow(origin, end mgl32.Vec2, color [4]float32) gizmoLineInstance {
 	const headLength float32 = 18
 	const headBaseWidth float32 = 14

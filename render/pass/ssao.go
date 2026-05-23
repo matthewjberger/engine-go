@@ -40,9 +40,6 @@ type ssaoBlurParams struct {
 	NormalPower    float32
 }
 
-// ssaoFormat is the output format of the SSAO + SSAO blur passes.
-// R8Unorm is enough for a single-channel occlusion factor and saves
-// bandwidth.
 const ssaoFormat = wgpu.TextureFormatR8Unorm
 
 type ssaoPassState struct {
@@ -62,21 +59,14 @@ type ssaoPassState struct {
 	aspectFn      func() float32
 }
 
-// SsaoResult exposes the blurred occlusion texture so postprocess
-// can sample it.
 type SsaoResult struct {
 	View *wgpu.TextureView
 }
 
-// SsaoResource wraps the blurred-AO view for the postprocess pass to
-// pick up by ECS resource lookup.
 type SsaoResource struct {
 	Result *SsaoResult
 }
 
-// AddSsaoPass registers a postprocess SSAO pass: depth + view_normal
-// in, R8 occlusion out. The blurred output is exposed via SsaoResource
-// so the tonemap can multiply it into the HDR scene color.
 func AddSsaoPass(renderer *render.Renderer, aspect func() float32) (*render.Pass, *render.Pass, error) {
 	state, err := newSsaoState(renderer.Device, aspect)
 	if err != nil {
@@ -448,10 +438,6 @@ func ssaoViewProj(context *render.PassContext, aspect float32) (mgl32.Mat4, mgl3
 	return view, proj
 }
 
-// nightshadeLCG is the linear congruential generator the reference
-// engine uses for its SSAO + SSGI kernel and noise. Reproducing the
-// exact sequence here gives bit-identical sampling patterns and the
-// same temporal stability characteristics.
 type nightshadeLCG uint32
 
 func (r *nightshadeLCG) nextFloat() float32 {
@@ -459,9 +445,6 @@ func (r *nightshadeLCG) nextFloat() float32 {
 	return float32(*r) / float32(math.MaxUint32)
 }
 
-// buildSsaoKernel mirrors the reference engine's SSAO kernel
-// generator: 64 hemisphere-aligned unit vectors, each scaled by an
-// index-weighted falloff so most samples cluster near the surface.
 func buildSsaoKernel() []mgl32.Vec4 {
 	rng := nightshadeLCG(12345)
 	kernel := make([]mgl32.Vec4, ssaoKernelSize)
@@ -478,10 +461,6 @@ func buildSsaoKernel() []mgl32.Vec4 {
 	return kernel
 }
 
-// buildSsaoNoise returns the reference engine's 4x4 SSAO rotation
-// noise: per-texel RG holds a random vector in [-1, 1] packed to
-// [0, 255]; B is the midpoint (128) and A is opaque (255). Format
-// is Rgba8Unorm to match.
 func buildSsaoNoise() []byte {
 	rng := nightshadeLCG(54321)
 	noise := make([]byte, 0, ssaoNoiseSize*ssaoNoiseSize*4)

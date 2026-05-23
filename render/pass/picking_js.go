@@ -12,11 +12,6 @@ import (
 	"github.com/matthewjberger/indigo/render"
 )
 
-// pickingJSState holds per-Picking JavaScript callbacks the readback
-// path needs to keep alive across rAF invocations. We can't store
-// js.Func on the platform-neutral [Picking] struct (it doesn't exist
-// on native builds), so a package-level map[*Picking]*pickingJSState
-// keeps the binding without polluting shared types.
 type pickingJSState struct {
 	onResolve js.Func
 	onReject  js.Func
@@ -24,24 +19,6 @@ type pickingJSState struct {
 
 var pickingJSStates = map[*Picking]*pickingJSState{}
 
-// ProcessPickingReadback advances any in-flight pick request by one
-// step. Build-tag-split because wasm cannot use cogentcore/webgpu's
-// blocking [wgpu.Buffer.MapAsync] from inside a requestAnimationFrame
-// callback: that path goes through jsx.Await, which parks the calling
-// goroutine on <-done, and the Promise can only resolve once Go
-// yields back to JS - deadlock.
-//
-// This implementation drops under the cogentcore wrapper and calls
-// GPUBuffer.mapAsync directly via syscall/js, attaching a .then()
-// callback (js.FuncOf) that flips picking.mapped from a fresh
-// goroutine spawned by the JS event loop. The rAF callback issues
-// mapAsync, returns immediately, and the next rAF observes the flag
-// and reads the mapped bytes.
-//
-// Buffer's underlying js.Value is read via unsafe.Pointer because
-// the field is unexported in cogentcore/webgpu. The buffer struct
-// holds exactly one field on JS (jsValue js.Value), so a pointer
-// cast is well-defined within the pinned cogentcore version.
 func ProcessPickingReadback(_ *render.Renderer, world *ecs.World) {
 	if !ecs.HasResource[*Picking](world) {
 		return
@@ -127,12 +104,6 @@ func clearPickingJS(picking *Picking) {
 	delete(pickingJSStates, picking)
 }
 
-// bufferJSValue extracts cogentcore/webgpu's unexported jsValue
-// field. The wrapper is `type Buffer struct { jsValue js.Value }`
-// and there's no public accessor, so this is the only path. The
-// size assertion below fails to compile if a future dependency
-// bump adds fields, surfacing the breakage loudly instead of as a
-// silent memory-read at runtime.
 var _ [unsafe.Sizeof(wgpu.Buffer{}) - unsafe.Sizeof(js.Value{})]struct{} = [0]struct{}{}
 
 func bufferJSValue(buffer *wgpu.Buffer) js.Value {

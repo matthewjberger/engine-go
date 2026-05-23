@@ -25,7 +25,7 @@ func TestLocalAxesIdentity(t *testing.T) {
 }
 
 func TestLocalAxesYaw90(t *testing.T) {
-	// 90 deg yaw around +Y: X axis rotates to -Z, Z axis rotates to +X.
+
 	yaw := mgl32.HomogRotate3DY(float32(math.Pi / 2))
 	axes := LocalAxes(yaw)
 	want := [3]mgl32.Vec3{{0, 0, -1}, {0, 1, 0}, {1, 0, 0}}
@@ -37,8 +37,7 @@ func TestLocalAxesYaw90(t *testing.T) {
 }
 
 func TestLocalAxesNormalizesScale(t *testing.T) {
-	// 5x uniform scale + 90 deg yaw: rotation columns have length 5,
-	// LocalAxes should renormalize.
+
 	matrix := mgl32.HomogRotate3DY(float32(math.Pi / 2)).Mul4(mgl32.Scale3D(5, 5, 5))
 	axes := LocalAxes(matrix)
 	for i := 0; i < 3; i++ {
@@ -49,7 +48,7 @@ func TestLocalAxesNormalizesScale(t *testing.T) {
 }
 
 func TestLocalAxesDegenerateColumnFallsBackToWorld(t *testing.T) {
-	matrix := mgl32.Mat4{} // all-zero matrix
+	matrix := mgl32.Mat4{}
 	axes := LocalAxes(matrix)
 	want := [3]mgl32.Vec3{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
 	for i := 0; i < 3; i++ {

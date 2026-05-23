@@ -18,11 +18,6 @@ const (
 	lightGizmoArrowHeadSize  = 0.25
 )
 
-// drawLightGizmos appends wireframe segments to the engine's Lines
-// resource for any selected entity that carries a render.Light.
-// Directional lights draw an arrow + four parallel rays;
-// point lights draw three orthogonal great circles + the three
-// axis diameters; spot lights draw a cone with a circular cap.
 func drawLightGizmos(engine *ecs.World) {
 	if !ecs.HasResource[pass.LinesResource](engine) {
 		return

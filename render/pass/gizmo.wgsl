@@ -32,7 +32,7 @@ fn vertex_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32)
 
     var pixel: vec2<f32>;
     if (kind < 0.5) {
-        // Rectangle (line segment) — six corners spanning a rotated rect.
+
         var corners = array<vec2<f32>, 6>(
             start + normal,
             start - normal,
@@ -43,7 +43,7 @@ fn vertex_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32)
         );
         pixel = corners[vi];
     } else {
-        // Filled triangle (arrowhead) — base at start, tip at end.
+
         var corners = array<vec2<f32>, 6>(
             start + normal,
             start - normal,

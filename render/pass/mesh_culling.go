@@ -12,10 +12,6 @@ import (
 //go:embed mesh_culling.wgsl
 var meshCullingShader string
 
-// CullingUniforms is the per-frame data the cull shader reads:
-// the camera frustum planes, the view-projection (for screen-size
-// math), the screen size, the min-pixel cutoff, the projection's
-// y scale (cot(fov/2)), and an enabled flag. 192 bytes.
 type CullingUniforms struct {
 	FrustumPlanes      [6]mgl32.Vec4
 	ViewProjection     mgl32.Mat4
@@ -28,10 +24,6 @@ type CullingUniforms struct {
 	Pad2               uint32
 }
 
-// bucketCullParams is the per-bucket uniform the cull shader
-// reads: the mesh's local-space bounding sphere and the instance
-// count to dispatch over. Three trailing u32 pads keep the WGSL
-// uniform 16-byte aligned.
 type bucketCullParams struct {
 	BoundsCenter mgl32.Vec3
 	BoundsRadius float32
@@ -163,10 +155,6 @@ func (p *meshCullingPipeline) release() {
 	}
 }
 
-// ExtractFrustumPlanes derives the six normalized planes of the
-// camera frustum from a view-projection matrix using the
-// Gribb-Hartmann row-add method. Plane order:
-// left, right, bottom, top, near, far.
 func ExtractFrustumPlanes(viewProj mgl32.Mat4) [6]mgl32.Vec4 {
 	row := func(r int) mgl32.Vec4 {
 		return mgl32.Vec4{viewProj[r], viewProj[4+r], viewProj[8+r], viewProj[12+r]}

@@ -1,14 +1,3 @@
-// Environment cubemap filter. Two distributions share one
-// compute pipeline:
-//
-//   * DISTRIBUTION_LAMBERTIAN: cosine-weighted average over the
-//     hemisphere. Produces the irradiance cubemap the IBL diffuse
-//     term samples with the surface normal.
-//
-//   * DISTRIBUTION_GGX: roughness-weighted importance-sampled
-//     mirror lobe. Produces the prefiltered specular cubemap the
-//     IBL specular term samples with the reflection vector at
-//     roughness * MAX_REFLECTION_LOD.
 
 const PI: f32 = 3.14159265358979323846;
 

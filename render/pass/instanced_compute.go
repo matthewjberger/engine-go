@@ -25,24 +25,16 @@ type instancedComputeEntity struct {
 	seen          bool
 }
 
-// InstancedCompute owns the compute pipeline that turns each
-// InstancedMesh entity's per-instance local matrices into world
-// matrices (parent GlobalTransform * local). The world-matrix
-// buffer per entity is shared: the instanced render pass and the
-// shadow pass both read it. Runs as its own graph pass before
-// shadows so the matrices exist when shadows sample them.
 type InstancedCompute struct {
 	pipeline *wgpu.ComputePipeline
 	layout   *wgpu.BindGroupLayout
 	entities map[ecs.Entity]*instancedComputeEntity
 }
 
-// InstancedComputeResource publishes the compute on the world.
 type InstancedComputeResource struct {
 	Compute *InstancedCompute
 }
 
-// NewInstancedCompute builds the transform compute pipeline.
 func NewInstancedCompute(device *wgpu.Device) (*InstancedCompute, error) {
 	module, err := device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "instanced_transform shader",
@@ -88,9 +80,6 @@ func NewInstancedCompute(device *wgpu.Device) (*InstancedCompute, error) {
 	}, nil
 }
 
-// AddInstancedComputePass registers the transform compute as a
-// graph pass and publishes the resource. Register before the
-// shadow + instanced render passes.
 func AddInstancedComputePass(renderer *render.Renderer, ic *InstancedCompute) (*render.Pass, error) {
 	pass := &render.Pass{
 		Name:  "instanced_compute",
@@ -109,8 +98,6 @@ func AddInstancedComputePass(renderer *render.Renderer, ic *InstancedCompute) (*
 	return pass, nil
 }
 
-// WorldBuffer returns the per-instance world-matrix buffer for an
-// entity, or nil if it has no computed instances this frame.
 func (ic *InstancedCompute) WorldBuffer(entity ecs.Entity) *wgpu.Buffer {
 	if es := ic.entities[entity]; es != nil {
 		return es.worldBuffer
@@ -118,7 +105,6 @@ func (ic *InstancedCompute) WorldBuffer(entity ecs.Entity) *wgpu.Buffer {
 	return nil
 }
 
-// InstanceCount returns the entity's instance count.
 func (ic *InstancedCompute) InstanceCount(entity ecs.Entity) uint32 {
 	if es := ic.entities[entity]; es != nil {
 		return es.instanceCount
@@ -126,8 +112,6 @@ func (ic *InstancedCompute) InstanceCount(entity ecs.Entity) uint32 {
 	return 0
 }
 
-// Generation bumps whenever an entity's world buffer reallocates,
-// so consumers can rebuild cached bind groups referencing it.
 func (ic *InstancedCompute) Generation(entity ecs.Entity) uint64 {
 	if es := ic.entities[entity]; es != nil {
 		return es.generation
@@ -262,7 +246,6 @@ func releaseInstancedComputeEntity(es *instancedComputeEntity) {
 	}
 }
 
-// Release frees the pipeline, layout, and per-entity buffers.
 func (ic *InstancedCompute) Release() {
 	for _, es := range ic.entities {
 		releaseInstancedComputeEntity(es)

@@ -1,9 +1,3 @@
-// Mesh pass shader: instanced PBR rendering with clustered light
-// culling. Directional lights live at the head of the lights
-// storage buffer and every fragment iterates them; local lights
-// (point + spot) are pre-bucketed per cluster by the
-// cluster_light_assign compute pass, and each fragment only
-// iterates the lights its cluster overlaps.
 
 struct VertexInput {
     @location(0) position: vec4<f32>,
@@ -210,19 +204,6 @@ fn safe_normalize(v: vec3<f32>) -> vec3<f32> {
     return v / sqrt(len_sq);
 }
 
-// get_normal builds the perturbed surface normal from the
-// interpolated geometric normal + tangent and a sampled normal
-// map. Re-orthogonalizes T against N to undo the post-
-// rasterization interpolation drift, then assembles the TBN
-// basis. The world_tangent's .w component is the glTF handedness
-// sign for the bitangent (+1 or -1).
-//
-// flags is the per-material normal_map_flags bitfield: bit 0 =
-// FLIP_Y (negate the green channel ;common for tools that
-// export -Y), bit 1 = TWO_COMPONENT (only XY stored, reconstruct
-// Z = sqrt(1 - x^2 - y^2)). Both bits are passed in as 0 today;
-// the helper takes the arg so the flag plumbing is in place for
-// when materials surface them.
 fn get_normal(
     world_normal: vec3<f32>,
     world_tangent: vec4<f32>,
@@ -280,14 +261,6 @@ fn apply_wrap(uv: vec2<f32>, packed: u32) -> vec2<f32> {
     return vec2<f32>(apply_wrap_axis(uv.x, mode_u), apply_wrap_axis(uv.y, mode_v));
 }
 
-// Material sampling uses textureSampleGrad with explicit
-// derivatives computed at the top of fragment_main (uniform
-// control flow). textureSample requires uniform control flow
-// because it picks LOD from implicit derivatives, and we call
-// these helpers from inside per-fragment `if (layer != NO_LAYER)`
-// branches that WebGPU's strict validation classifies as
-// non-uniform. Passing ddx/ddy explicitly keeps full mipmapping
-// available while satisfying the rule.
 fn sample_srgb_layer(packed: u32, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> vec4<f32> {
     let layer = i32(packed & 0xFFFFu);
     let wrapped = apply_wrap(uv, packed);
@@ -325,20 +298,11 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (vec3<f32>(1.0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
-// fresnel_schlick_roughness is the roughness-aware variant used
-// for IBL specular: pulls f0 up toward (1 - roughness) so rough
-// surfaces don't artificially darken at grazing angles. Standard
-// trick from Real Shading in Unreal Engine 4 / Karis 2013.
 fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
     let invR = vec3<f32>(1.0 - roughness);
     return f0 + (max(invR, f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
-// sample_directional_shadow projects the fragment's world position
-// into the directional light's clip space, normalizes to UV +
-// depth, and runs a 3x3 PCF compare against the shadow map.
-// Returns 1.0 (fully lit) when outside the shadow map's coverage
-// so geometry beyond the shadow frustum doesn't darken.
 fn select_cascade(view_depth: f32) -> i32 {
     for (var cascade: i32 = 0; cascade < 4; cascade = cascade + 1) {
         if view_depth < shadow_uniforms.cascade_splits[cascade] {
@@ -348,16 +312,10 @@ fn select_cascade(view_depth: f32) -> i32 {
     return 3;
 }
 
-// sample_cascade does PCSS-style filtering on one cascade slice:
-// blocker search using a non-comparison depth read drives the
-// penumbra radius, the final PCF samples a Poisson disk at that
-// radius. light_size scales the penumbra so different lights can
-// have different softness.
 fn sample_cascade(world_pos: vec3<f32>, world_normal: vec3<f32>, cascade: i32) -> f32 {
     let direction_to_light = -normalize(shadow_uniforms.light_direction.xyz);
     let texel_world = shadow_uniforms.cascade_texel_world[cascade];
-    // Slope-aware normal bias: surfaces near grazing angles need
-    // more offset to avoid acne without peter-panning flat ones.
+
     let slope = 1.0 - max(dot(world_normal, direction_to_light), 0.0);
     let normal_offset = world_normal * texel_world * (1.8 + slope * 3.0);
     let depth_offset = direction_to_light * 0.008;
@@ -375,9 +333,6 @@ fn sample_cascade(world_pos: vec3<f32>, world_normal: vec3<f32>, cascade: i32) -
     let texel = 1.0 / 2048.0;
     let light_size = max(shadow_uniforms.light_size, 0.001);
 
-    // Bias subtracted from the receiver depth during the blocker
-    // search so a self-shadow acne pixel doesn't get picked up as
-    // its own blocker and inflate the penumbra.
     let search_bias = 0.001;
     let search_radius = 4.0 * texel * light_size;
     let dims_cascade = vec2<f32>(textureDimensions(shadow_map));
@@ -414,9 +369,7 @@ fn sample_directional_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>) -> f
     let factor = sample_cascade(world_pos, world_normal, cascade);
     if (cascade < 3) {
         let cascade_end = shadow_uniforms.cascade_splits[cascade];
-        // Wider blend than the old PCF needed because PCSS
-        // produces softer penumbras that make the cascade seam
-        // visible if we transition too sharply.
+
         let blend_range = cascade_end * 0.25;
         let blend_start = cascade_end - blend_range;
         if (view_depth > blend_start) {
@@ -475,13 +428,6 @@ fn get_cluster_index(frag_coord: vec2<f32>, view_depth: f32) -> u32 {
            clamped_slice * cluster_uniforms.cluster_count.x * cluster_uniforms.cluster_count.y;
 }
 
-// sample_spot_shadow projects the fragment's world position into
-// the spot light's view-projection (taken from
-// spot_shadow_uniforms.entries[shadow_index]), maps the resulting
-// clip-space xy into the slot's atlas region via atlas_offset +
-// atlas_scale, and compares depth via the comparison sampler.
-// Returns 1.0 = fully lit, 0.0 = fully shadowed. A small bias
-// nudges the sample forward to avoid self-shadow acne.
 fn sample_spot_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>, shadow_index: i32) -> f32 {
     if (shadow_index < 0 || u32(shadow_index) >= spot_shadow_uniforms.count) {
         return 1.0;
@@ -537,11 +483,6 @@ fn sample_spot_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>, shadow_inde
     return sum / 16.0;
 }
 
-// sample_point_shadow looks up the omnidirectional shadow cube
-// face that contains the light->fragment direction. The cube
-// stores normalized distance (frag distance / light range) per
-// face, so we compare the fragment's normalized distance against
-// the sampled occluder distance with a small bias.
 fn sample_point_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>, shadow_index: i32) -> f32 {
     if (shadow_index < 0 || u32(shadow_index) >= point_shadow_uniforms.count) {
         return 1.0;
@@ -559,10 +500,6 @@ fn sample_point_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>, shadow_ind
     let bias = entry.bias * (1.0 + slope * 2.0);
     let reference = normalized - bias;
 
-    // Build a tangent frame around the sample direction using the
-    // Frisvad branchless orthonormal basis. Smooth across the
-    // direction.y singularity that the older abs(direction.y)>0.95
-    // branch produced visible flicker around during camera motion.
     var tangent: vec3<f32>;
     var bitangent: vec3<f32>;
     if (direction.z < -0.9999999) {
@@ -647,22 +584,11 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
 fn fragment_main(in: VertexOutput) -> FragmentOutput {
     let mat = materials[in.material_index];
 
-    // Sample-coordinate derivatives, hoisted to uniform control
-    // flow at the top of the fragment so the per-layer sample
-    // helpers below can run inside conditionals via
-    // textureSampleGrad without violating WebGPU's uniform-
-    // control-flow rule for implicit-LOD sampling.
     let uv_ddx = dpdx(in.uv);
     let uv_ddy = dpdy(in.uv);
 
-    // View direction in world space, recovered from the camera
-    // position uniform (NOT from -world_pos ;that only worked
-    // when the camera sat at the origin).
     let view_dir = normalize(cluster_uniforms.camera_position.xyz - in.world_pos);
 
-    // Re-derive the geometric normal. Falls back to a screen-space
-    // derivative when the interpolated vertex normal is degenerate
-    // (e.g., a flat-shaded primitive with all-zero NORMAL data).
     let derived_normal = normalize(cross(dpdx(in.world_pos), dpdy(in.world_pos)));
     let n_len = length(in.world_normal);
     var geom_normal: vec3<f32>;
@@ -673,11 +599,6 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     }
     var geom_tangent = in.world_tangent;
 
-    // Back-face flip. Use the view-dir dot product instead of the
-    // WGSL front_facing builtin: front_facing depends on culling
-    // state and produces wrong results with CullModeNone +
-    // double-sided meshes. Flipping the normal also flips the
-    // tangent so the TBN basis stays consistent under the flip.
     if (dot(geom_normal, view_dir) < 0.0) {
         geom_normal = -geom_normal;
         geom_tangent = -geom_tangent;
@@ -714,11 +635,6 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     roughness = clamp(roughness, 0.04, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
 
-    // Raw occlusion sample. Strength is applied later via
-    // mix(ambient, ambient*occlusion, strength) so the term only
-    // attenuates the ambient IBL contribution. Applying strength
-    // here too would double-count it and crush ambient on any
-    // material with strength != 1.
     var occlusion = 1.0;
     if (mat.occlusion_layer != NO_LAYER) {
         occlusion = sample_linear_layer(mat.occlusion_layer, in.uv, uv_ddx, uv_ddy).r;
@@ -737,14 +653,9 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
         return out_unlit;
     }
 
-    // Reuse the view_dir computed above for V ;after the back-
-    // face flip, geom_normal points toward view_dir, so V is
-    // exactly normalize(camera_position - world_pos).
     let v = view_dir;
     let n = normal;
-    // F0 from the material's IOR (KHR_materials_ior). Default ior
-    // = 1.5 gives F0 ~= 0.04 which matches the spec fallback. The
-    // metallic blend keeps full-metal surfaces at albedo F0.
+
     let dielectric_f0 = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);
     let f0 = mix(vec3<f32>(dielectric_f0), albedo, metallic);
 
@@ -752,11 +663,6 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
 
     let shadow_factor = sample_directional_shadow(in.world_pos, n);
 
-    // Iterate every directional light unconditionally; they have no
-    // bounding volume and affect every cluster. The first
-    // directional light receives the shadow-map attenuation
-    // computed from the shadow_depth pass; additional directional
-    // lights (rim, fill) stay unshadowed for now.
     for (var i = 0u; i < cluster_uniforms.num_directional_lights; i = i + 1u) {
         let light = lights[i];
         let point_to_light = -light.direction.xyz;
@@ -767,8 +673,6 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
         lo = lo + contribution;
     }
 
-    // Iterate only the local lights that touch this fragment's
-    // cluster, looked up via screen-space tile + log-z slice.
     let view_pos = view_matrix * vec4<f32>(in.world_pos, 1.0);
     let view_depth = -view_pos.z;
     let cluster_idx = get_cluster_index(in.clip_position.xy, view_depth);
@@ -789,12 +693,6 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
         lo = lo + contribution;
     }
 
-    // Image-based ambient (split-sum approximation + multi-scatter
-    // Fdez-Aguera 2019). Diffuse term samples the Lambertian-filtered
-    // irradiance cubemap with N; specular term samples the
-    // GGX-prefiltered cubemap with R at LOD = roughness *
-    // MAX_REFLECTION_LOD and pairs it with the pre-integrated BRDF
-    // LUT sampled at (NdotV, roughness).
     let n_dot_v = max(dot(n, v), 0.0);
     let r = reflect(-v, n);
     let f_ibl = fresnel_schlick_roughness(n_dot_v, f0, roughness);

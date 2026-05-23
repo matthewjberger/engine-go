@@ -1,8 +1,3 @@
-// Cubemap mip-chain generator. Samples mip N-1 at half the
-// resolution to fill mip N. Bilinear filtering on the sampler
-// produces the standard 2x2 average; running this once per mip
-// level builds the full chain that the GGX prefilter pass needs
-// for higher-roughness samples.
 
 @group(0) @binding(0)
 var src_texture: texture_2d_array<f32>;

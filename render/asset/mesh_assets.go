@@ -7,15 +7,8 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 )
 
-// MeshHandle is an opaque index into a [MeshAssets] registry. Zero is
-// not a special value; the registry hands the first registered mesh
-// out as handle 0.
 type MeshHandle uint32
 
-// Primitives bundles the built-in unit-mesh handles produced by
-// [RegisterPrimitives]. Stored as a typed resource on the engine
-// world so apps that want a quick cube or quad can pull the handle
-// off the world without keeping a reference to the renderer.
 type Primitives struct {
 	UnitTriangle MeshHandle
 	UnitQuad     MeshHandle
@@ -24,10 +17,6 @@ type Primitives struct {
 	UnitSphere   MeshHandle
 }
 
-// RegisterPrimitives uploads the unit triangle, quad, and cube into
-// assets and returns their handles. Apps usually call this through
-// [indigo/app.NewEngineWorld] which installs the result as a
-// [Primitives] resource.
 func RegisterPrimitives(device *wgpu.Device, assets *MeshAssets) (Primitives, error) {
 	tri, err := assets.Register(device, "unit_triangle", UnitTriangleVertices)
 	if err != nil {
@@ -52,12 +41,6 @@ func RegisterPrimitives(device *wgpu.Device, assets *MeshAssets) (Primitives, er
 	return Primitives{UnitTriangle: tri, UnitQuad: quad, UnitCube: cube, UnitPlane: plane, UnitSphere: sphere}, nil
 }
 
-// MeshVertex is the input layout the engine's stock mesh shader
-// expects: position, normal, tangent, uv, color, each padded to
-// vec4 stride for std430 alignment. UV holds two coordinate sets:
-// xy is TEXCOORD_0, zw is TEXCOORD_1. Tangent's w stores handedness
-// for normal mapping. Custom passes that bypass MeshAssets can use
-// their own layout.
 type MeshVertex struct {
 	Position [4]float32
 	Normal   [4]float32
@@ -66,15 +49,6 @@ type MeshVertex struct {
 	Color    [4]float32
 }
 
-// meshEntry is the renderer's per-mesh record: GPU vertex buffer,
-// vertex count, and an optional base-color texture handle. Meshes
-// loaded from glTF carry their texture here so the mesh pass binds
-// it automatically when drawing instances of that handle.
-//
-// CpuVertices keeps a copy of the source vertex slice so debug
-// passes (normal visualization) can transform per-vertex normals
-// into world space without round-tripping through a compute
-// shader. Allocates roughly 40 bytes per vertex per mesh.
 type meshEntry struct {
 	Name        string
 	Vertices    *wgpu.Buffer
@@ -84,27 +58,16 @@ type meshEntry struct {
 	CpuVertices []MeshVertex
 }
 
-// MeshAssets is the engine's per-renderer mesh registry. Stored on
-// the engine ECS world via [MeshAssetsResource] so passes that
-// want to draw a mesh can look up its GPU buffer by handle. The
-// registry is "list of vertex buffers indexed by handle."
 type MeshAssets struct {
 	entries []meshEntry
 }
 
-// MeshAssetsResource wraps a *MeshAssets so it can be installed on an
-// ECS world via Go-type-keyed resources. Mutations through the wrapped
-// pointer persist; freecs-go keeps a stable pointer to the wrapper.
 type MeshAssetsResource struct {
 	Assets *MeshAssets
 }
 
-// NewMeshAssets returns an empty registry. Use [MeshAssets.Register]
-// to add meshes.
 func NewMeshAssets() *MeshAssets { return &MeshAssets{} }
 
-// Register uploads vertices to a new GPU buffer and returns the handle
-// callers should attach to entities via [RenderMesh].
 func (assets *MeshAssets) Register(device *wgpu.Device, name string, vertices []MeshVertex) (MeshHandle, error) {
 	buffer, err := device.CreateBufferInit(&wgpu.BufferInitDescriptor{
 		Label:    name + " vertex buffer",
@@ -127,10 +90,6 @@ func (assets *MeshAssets) Register(device *wgpu.Device, name string, vertices []
 	return handle, nil
 }
 
-// CpuVertices returns the CPU-side vertex slice for a registered
-// mesh, or nil for an unknown handle. Used by debug overlays
-// (normal visualization) that need to iterate vertices without
-// reading them back from the GPU.
 func (assets *MeshAssets) CpuVertices(handle MeshHandle) []MeshVertex {
 	if int(handle) >= len(assets.entries) {
 		return nil
@@ -138,8 +97,6 @@ func (assets *MeshAssets) CpuVertices(handle MeshHandle) []MeshVertex {
 	return assets.entries[handle].CpuVertices
 }
 
-// Lookup returns the per-mesh entry for handle. Callers that pass an
-// out-of-range handle get a false result and should skip the entity.
 func (assets *MeshAssets) Lookup(handle MeshHandle) (*meshEntry, bool) {
 	if int(handle) >= len(assets.entries) {
 		return nil, false
@@ -147,9 +104,6 @@ func (assets *MeshAssets) Lookup(handle MeshHandle) (*meshEntry, bool) {
 	return &assets.entries[handle], true
 }
 
-// AttachTexture sets the base-color texture handle for a mesh.
-// Callers register the texture via [TextureCache.Register] first and
-// then bind its handle here.
 func (assets *MeshAssets) AttachTexture(handle MeshHandle, texture TextureID) {
 	if int(handle) >= len(assets.entries) {
 		return
@@ -157,8 +111,6 @@ func (assets *MeshAssets) AttachTexture(handle MeshHandle, texture TextureID) {
 	assets.entries[handle].Texture = texture
 }
 
-// Bounds returns the AABB of the registered mesh in its local
-// coordinate space. Zero-extent for an unknown handle.
 func (assets *MeshAssets) Bounds(handle MeshHandle) BoundingVolume {
 	if int(handle) >= len(assets.entries) {
 		return BoundingVolume{}
@@ -166,10 +118,8 @@ func (assets *MeshAssets) Bounds(handle MeshHandle) BoundingVolume {
 	return assets.entries[handle].Bounds
 }
 
-// Count returns the number of registered meshes.
 func (assets *MeshAssets) Count() int { return len(assets.entries) }
 
-// Release frees every GPU buffer owned by the registry.
 func (assets *MeshAssets) Release() {
 	for index := range assets.entries {
 		if assets.entries[index].Vertices != nil {
@@ -180,8 +130,6 @@ func (assets *MeshAssets) Release() {
 	assets.entries = nil
 }
 
-// UnitTriangleVertices is a 1-unit XY triangle facing +Z, with red /
-// green / blue corners.
 var UnitTriangleVertices = []MeshVertex{
 	{Position: [4]float32{0.5, -0.5, 0.0, 1.0}, Normal: defaultNormalZ, Tangent: defaultTangent, UV: [4]float32{1, 1, 0, 0}, Color: [4]float32{1.0, 0.0, 0.0, 1.0}},
 	{Position: [4]float32{-0.5, -0.5, 0.0, 1.0}, Normal: defaultNormalZ, Tangent: defaultTangent, UV: [4]float32{0, 1, 0, 0}, Color: [4]float32{0.0, 1.0, 0.0, 1.0}},
@@ -193,8 +141,6 @@ var (
 	defaultTangent = [4]float32{1, 0, 0, 1}
 )
 
-// UnitQuadVertices is a 1-unit XY quad facing +Z, two triangles wound
-// CCW, with red / green / blue / yellow corners.
 var UnitQuadVertices = []MeshVertex{
 	{Position: [4]float32{-0.5, -0.5, 0.0, 1.0}, Normal: defaultNormalZ, Tangent: defaultTangent, UV: [4]float32{0, 1, 0, 0}, Color: [4]float32{1.0, 0.0, 0.0, 1.0}},
 	{Position: [4]float32{0.5, -0.5, 0.0, 1.0}, Normal: defaultNormalZ, Tangent: defaultTangent, UV: [4]float32{1, 1, 0, 0}, Color: [4]float32{0.0, 1.0, 0.0, 1.0}},
@@ -204,11 +150,6 @@ var UnitQuadVertices = []MeshVertex{
 	{Position: [4]float32{-0.5, 0.5, 0.0, 1.0}, Normal: defaultNormalZ, Tangent: defaultTangent, UV: [4]float32{0, 0, 0, 0}, Color: [4]float32{1.0, 1.0, 0.0, 1.0}},
 }
 
-// UnitPlaneVertices is a 1x1 horizontal plane on the XZ axes,
-// normal pointing +Y, white vertex color so the material's
-// BaseColor reads cleanly. Use this for ground planes / receivers
-// where the rainbow UnitQuad's per-corner color tint would
-// pollute the lit output.
 var UnitPlaneVertices = func() []MeshVertex {
 	const half = float32(0.5)
 	const up = float32(1.0)
@@ -246,10 +187,6 @@ var UnitPlaneVertices = func() []MeshVertex {
 	return verts
 }()
 
-// UnitCubeVertices is a 1-unit cube centered at origin, 36 vertices
-// (6 faces x 2 triangles x 3 vertices), all wound CCW when viewed from
-// outside. Each face gets its own distinct color so spinning cubes
-// read as 3D rather than as flat colored disks.
 var UnitCubeVertices = func() []MeshVertex {
 	const s = 0.5
 	red := [4]float32{0.9, 0.2, 0.2, 1.0}
@@ -316,8 +253,6 @@ var UnitCubeVertices = func() []MeshVertex {
 	return out
 }()
 
-// UnitSphereVertices returns a 24-segment UV sphere of radius 0.5
-// expanded into non-indexed triangles.
 func UnitSphereVertices() []MeshVertex {
 	const segments = 24
 	const radius = 0.5

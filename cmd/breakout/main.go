@@ -1,7 +1,5 @@
 //go:build !js
 
-// Command breakout is the engine's breakout-clone demo rendered
-// through the engine's render graph.
 package main
 
 import (
@@ -96,10 +94,6 @@ func main() {
 	}
 }
 
-// installInputCallbacks wires the GLFW cursor / mouse-button / scroll
-// callbacks onto the engine world's Input resource, plus keyboard
-// down/up for held A/D paddle motion, edge-triggered space (launch),
-// and R (reset).
 func installInputCallbacks(glfwWindow *glfw.Window, engine *ecs.World) {
 	glfwWindow.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
 		input := ecs.MustResource[render.Input](engine)
@@ -144,8 +138,6 @@ func installInputCallbacks(glfwWindow *glfw.Window, engine *ecs.World) {
 	})
 }
 
-// glfwKeyRune maps the breakout-relevant subset of GLFW key codes to
-// the uppercase ASCII runes the Input resource expects.
 func glfwKeyRune(key glfw.Key) (rune, bool) {
 	switch {
 	case key >= glfw.KeyA && key <= glfw.KeyZ:

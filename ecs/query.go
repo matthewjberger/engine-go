@@ -5,10 +5,6 @@ import (
 	"unsafe"
 )
 
-// Query yields every entity matching include (every bit must be set) and
-// not matching any bit in exclude. The iteration order is the archetype
-// walk order; it is deterministic within a single world's lifetime but not
-// across runs.
 func (w *World) Query(include, exclude Mask) iter.Seq[Entity] {
 	return func(yield func(Entity) bool) {
 		for _, tableIndex := range w.cachedTables(include) {
@@ -25,8 +21,6 @@ func (w *World) Query(include, exclude Mask) iter.Seq[Entity] {
 	}
 }
 
-// QueryFirst returns the first entity that matches include and not exclude.
-// Returns the zero Entity and false if no match exists.
 func (w *World) QueryFirst(include, exclude Mask) (Entity, bool) {
 	for _, tableIndex := range w.cachedTables(include) {
 		table := w.tables[tableIndex]
@@ -40,8 +34,6 @@ func (w *World) QueryFirst(include, exclude Mask) (Entity, bool) {
 	return Entity{}, false
 }
 
-// CountQuery returns the number of entities matching include and not
-// exclude.
 func (w *World) CountQuery(include, exclude Mask) int {
 	total := 0
 	for _, tableIndex := range w.cachedTables(include) {
@@ -54,19 +46,6 @@ func (w *World) CountQuery(include, exclude Mask) int {
 	return total
 }
 
-// ForEach walks every entity satisfying include and not exclude, invoking
-// callback with direct table access. Component slices are at
-// freecs.Column[T](world, table).
-//
-// Mutations through the table do not auto-stamp the change-detection tick.
-// Use MarkChanged or GetMut if you want change tracking on bulk iteration.
-//
-// The callback must not mutate world topology (Spawn, Despawn,
-// AddComponents, RemoveComponents, Set on a missing component, tag inserts
-// on an archetype currently being walked). Structural changes during
-// iteration invalidate the cached entity count and may leave the column
-// slice aliasing freed or reordered memory. Use the command buffer
-// (QueueDespawn, QueueSet, etc.) to defer structural changes safely.
 func (w *World) ForEach(include, exclude Mask, callback func(entity Entity, table *Archetype, index int)) {
 	w.enterIter()
 	defer w.leaveIter()
@@ -81,9 +60,6 @@ func (w *World) ForEach(include, exclude Mask, callback func(entity Entity, tabl
 	}
 }
 
-// MarkChanged stamps component T's slot for entity with the current tick.
-// Use this inside a ForEach or IterN body when you mutated the column
-// through direct pointer access.
 func MarkChanged[T any](world *World, entity Entity) {
 	info := mustComponentInfo[T](world)
 	tableIndex, arrayIndex, ok := world.entityLocs.get(entity)
@@ -97,12 +73,6 @@ func MarkChanged[T any](world *World, entity Entity) {
 	table.columns[info.bitIndex].markChanged(arrayIndex, world.currentTick)
 }
 
-// Column returns the typed []T view of an archetype's column for T and a
-// flag indicating whether the archetype carries T at all. ok=false means T
-// is not in this archetype's mask; ok=true with an empty slice means T is
-// part of the mask but the archetype currently holds zero rows. The slice
-// aliases the column's backing storage and is invalidated by any structural
-// change (spawn, despawn, add, remove) that touches this archetype.
 func Column[T any](world *World, table *Archetype) ([]T, bool) {
 	info, present := componentInfoFor[T](world)
 	if !present {

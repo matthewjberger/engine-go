@@ -17,18 +17,12 @@ import (
 //go:embed lines.wgsl
 var linesShader string
 
-// LineSegment is a single straight-line draw in world space.
-// Position fields use vec4 with w == 1.0 to match WGSL std430 layout
-// on the storage buffer side.
 type LineSegment struct {
 	Start [4]float32
 	End   [4]float32
 	Color [4]float32
 }
 
-// Lines is the resource apps push per-frame line segments into. The
-// lines pass consumes the slice each frame and resets it for the
-// next.
 type Lines struct {
 	Segments        []LineSegment
 	OverlaySegments []LineSegment
@@ -36,8 +30,6 @@ type Lines struct {
 
 type LinesResource struct{ Lines *Lines }
 
-// AddSegment appends a world-space line from start to end with the
-// given RGBA color, drawn with regular depth testing.
 func (l *Lines) AddSegment(start, end [3]float32, color [4]float32) {
 	l.Segments = append(l.Segments, LineSegment{
 		Start: [4]float32{start[0], start[1], start[2], 1},
@@ -46,9 +38,6 @@ func (l *Lines) AddSegment(start, end [3]float32, color [4]float32) {
 	})
 }
 
-// AddOverlaySegment appends a segment that always draws on top of
-// the scene regardless of depth, for editor overlays like the
-// skeleton visualization where joints sit inside geometry.
 func (l *Lines) AddOverlaySegment(start, end [3]float32, color [4]float32) {
 	l.OverlaySegments = append(l.OverlaySegments, LineSegment{
 		Start: [4]float32{start[0], start[1], start[2], 1},
@@ -57,9 +46,6 @@ func (l *Lines) AddOverlaySegment(start, end [3]float32, color [4]float32) {
 	})
 }
 
-// AddBox emits the 12 edges of an axis-aligned box transformed by a
-// 4x4 model matrix. Used by the bounding-volume visualization but
-// public so any system can draw an oriented box.
 func (l *Lines) AddBox(bounds asset.BoundingVolume, model *transform.Mat4, color [4]float32) {
 	corners := bounds.Corners()
 	var worldCorners [8][3]float32
@@ -93,10 +79,6 @@ type linesPassState struct {
 	aspectFn        func() float32
 }
 
-// NewLinesPass builds a screen-space-thin world-space line render
-// pass. Lines come from the [Lines] resource on the engine world;
-// the pass uploads them to a storage buffer each frame and draws
-// them as a primitive-line-list.
 func NewLinesPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32) (*render.Pass, error) {
 	state := &linesPassState{aspectFn: aspect}
 
@@ -461,9 +443,6 @@ func ensureLinesOverlayCapacity(state *linesPassState, device *wgpu.Device, requ
 	return nil
 }
 
-// AddLinesPass registers the line pass with renderer.Graph and binds
-// it to write into the scene color attachment with the scene depth
-// buffer, so world-space lines respect the mesh-pass depth.
 func AddLinesPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewLinesPass(renderer.Device, render.HdrFormat, renderer.AspectRatio)
 	if err != nil {

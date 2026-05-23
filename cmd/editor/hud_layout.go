@@ -1,7 +1,3 @@
-// HUD layout types, constants, and builder helpers. Everything in
-// this file describes the *shape* of the editor's retained-mode UI
-// (sizes, panel layout, menu structure). Per-frame refresh +
-// input handling live in sibling files.
 package main
 
 import (
@@ -25,17 +21,8 @@ const (
 	menuContextOpen = 4
 )
 
-// menuPopupZ is the render z-index for popup panels and items.
-// Anything below this stays underneath; tree rows, inspector text,
-// and other HUD content use ZIndex 0. Items render on top of the
-// panel via the +1 offset.
 const menuPopupZ int32 = 100
 
-// menuPopup is the visible content of one drop-down menu: a panel
-// plus its item rows. Per-menu helpers populate the items with
-// per-frame content; the platform layer toggles visibility by
-// writing Color.RGBA[3] across the panel and items based on which
-// menu is open.
 type menuPopup struct {
 	Panel ecs.Entity
 	Items [8]ecs.Entity
@@ -55,16 +42,9 @@ type HudHandles struct {
 	EditMenu menuPopup
 	ViewMenu menuPopup
 
-	// ContextMenu is the right-click popup for tree rows. The
-	// platform layer repositions its panel to the mouse on
-	// right-press and stores the target entity in ContextTarget
-	// so the item action knows which entity to operate on.
 	ContextMenu   menuPopup
 	ContextTarget ecs.Entity
 
-	// Which top-bar menu (if any) is currently open. Only one
-	// popup is shown at a time; flipping a new one closes the
-	// previous.
 	OpenMenu int
 
 	LeftPanel ecs.Entity
@@ -178,15 +158,9 @@ func buildHud(world *ecs.World) HudHandles {
 			Color:   [4]float32{0.9, 0.92, 0.96, 1},
 			Scale:   1.4,
 		}).Entity()
-	// TextInput component lives on the same entity so editing the
-	// label rewrites Text.Content and a TextCommitted event flushes
-	// the buffer back to the selected entity's [app.Name].
+
 	ecs.Set(world, h.InspectorName, ui.TextInput{})
 
-	// Caret: a thin colored rectangle the platform layer
-	// repositions every frame to the current insertion point in
-	// the inspector name buffer. Hidden (Color alpha 0) when the
-	// name field isn't focused.
 	h.InspectorCaret = b.Node(ui.Node{
 		X: 0, Y: 0, Width: 2, Height: 14,
 		Anchor: ui.AnchorTopLeft,
@@ -199,12 +173,6 @@ func buildHud(world *ecs.World) HudHandles {
 	h.MaterialLabel = inspectorLabel(b, "")
 	b.Pop()
 
-	// Menu popups built LAST so their entities sit at the end of
-	// their archetypes' per-frame iteration order. The UI quad +
-	// text passes have no explicit z-ordering, so a later instance
-	// blends on top of earlier ones; without this, the tree rows and
-	// inspector labels (created earlier in their archetypes) would
-	// paint over the open popup's items.
 	const buttonOffset float32 = 6
 	const buttonStride float32 = 64 + 4
 	h.FileMenu = buildMenuPopup(b, buttonOffset+0*buttonStride, hudTopBarHeight,
@@ -221,11 +189,7 @@ func buildHud(world *ecs.World) HudHandles {
 
 func buildMenuPopup(b *ui.Builder, anchorX, anchorY float32, items []string) menuPopup {
 	height := float32(8) + float32(len(items))*hudMenuItemHeight + float32(len(items)-1)*2
-	// Interactive on the panel absorbs clicks on the panel
-	// background so they don't fall through to the close-on-outside-
-	// click logic. ZIndex makes both the panel quad and its item
-	// text render strictly on top of the HUD beneath them, replacing
-	// the prior archetype-creation-order hack.
+
 	panel := b.Node(ui.Node{
 		X: anchorX, Y: anchorY,
 		Width: hudMenuPopupWidth, Height: height,

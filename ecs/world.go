@@ -2,14 +2,6 @@ package ecs
 
 import "reflect"
 
-// World owns every entity, archetype, and side structure (tags, events,
-// commands, resources). A World is not safe for concurrent use; wrap it in
-// a mutex if multiple goroutines need to touch it.
-//
-// A World must not be copied after first use. Copying duplicates the
-// archetype tables and side maps while still aliasing the allocator
-// through the shared pointer. The embedded noCopy sentinel makes go vet
-// flag accidental copies.
 type World struct {
 	_             noCopy
 	registry      *registry
@@ -29,10 +21,6 @@ type World struct {
 	iterDepth     int
 }
 
-// enterIter / leaveIter bracket the iter-style helpers so the world
-// can detect structural mutations attempted from inside a callback.
-// Spawn / Despawn / Add / Remove panic while iterDepth > 0; defer
-// those via the command buffer (QueueSpawn, QueueDespawn, ...).
 func (w *World) enterIter() { w.iterDepth++ }
 func (w *World) leaveIter() { w.iterDepth-- }
 
@@ -42,8 +30,6 @@ func (w *World) guardStructuralMutation(op string) {
 	}
 }
 
-// New creates an empty world. Components must be registered with
-// Register before they can be spawned, set, or queried.
 func New() *World {
 	return newWorldWithAllocator(&allocator{})
 }
@@ -57,24 +43,15 @@ func newWorldWithAllocator(shared *allocator) *World {
 		eventByType: make(map[reflect.Type]int),
 		tagSets:     make(map[reflect.Type]map[Entity]struct{}),
 		resources:   make(map[reflect.Type]any),
-		// currentTick starts at 1, not 0, so changes stamped before
-		// the first Step (initial spawns, setup-time mutations) are
-		// strictly greater than the zero-valued lastTick watermark
-		// and visible to IterChanged on frame 0.
+
 		currentTick: 1,
 	}
 }
 
-// CurrentTick returns the world's current frame counter.
 func (w *World) CurrentTick() uint32 { return w.currentTick }
 
-// LastTick returns the watermark of the previous frame, used by change-
-// detection queries to find slots modified since.
 func (w *World) LastTick() uint32 { return w.lastTick }
 
-// Step advances the frame. It updates all event queues (current → previous)
-// and bumps the change-detection tick. Call once per frame at the end, after
-// every system has had a chance to read the current frame's changes.
 func (w *World) Step() {
 	for _, queue := range w.eventQueues {
 		queue.update()
@@ -83,8 +60,6 @@ func (w *World) Step() {
 	w.currentTick++
 }
 
-// getOrCreateTable returns the index of the archetype for mask, creating it
-// (and its edges, and patching the query cache) the first time mask appears.
 func (w *World) getOrCreateTable(mask Mask) int {
 	if index, ok := w.tableLookup[mask]; ok {
 		return index
@@ -108,7 +83,7 @@ func (w *World) invalidateQueryCacheForNewTable(newMask Mask, newTableIndex int)
 }
 
 func (w *World) wireEdgesForNewTable(newMask Mask, newTableIndex int) {
-	// Fill incoming edges from existing tables that are one bit-flip away.
+
 	for bit := uint8(0); bit < w.registry.nextBit; bit++ {
 		bitMask := Mask(1) << bit
 		for existingIndex, existing := range w.tables {
@@ -124,7 +99,6 @@ func (w *World) wireEdgesForNewTable(newMask Mask, newTableIndex int) {
 		}
 	}
 
-	// Fill outgoing edges from the new table to existing tables.
 	for bit := uint8(0); bit < w.registry.nextBit; bit++ {
 		bitMask := Mask(1) << bit
 		if destIndex, ok := w.tableLookup[newMask|bitMask]; ok {
@@ -138,8 +112,6 @@ func (w *World) wireEdgesForNewTable(newMask Mask, newTableIndex int) {
 	}
 }
 
-// cachedTables returns the table indices satisfying include, populating
-// the cache on first use.
 func (w *World) cachedTables(include Mask) []int {
 	if cached, ok := w.queryCache[include]; ok {
 		return cached

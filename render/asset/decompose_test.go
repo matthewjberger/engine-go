@@ -10,14 +10,10 @@ import (
 
 const decomposeEps = 1e-4
 
-// reconstructMatrix builds a column-major 4x4 TRS matrix from
-// decomposed components and compares against the original. If
-// decomposition is correct, reconstruct(decompose(M)) == M for
-// any TRS-affine matrix.
 func reconstructMatrix(translation [3]float32, rotation [4]float32, scale [3]float32) [16]float32 {
 	q := mgl32.Quat{W: rotation[3], V: mgl32.Vec3{rotation[0], rotation[1], rotation[2]}}
 	r := q.Mat4()
-	// Apply scale to the rotation columns.
+
 	r[0] *= scale[0]
 	r[1] *= scale[0]
 	r[2] *= scale[0]
@@ -50,8 +46,7 @@ func roundTripMatrix(t *testing.T, label string, matrix [16]float64) {
 }
 
 func TestDecompose180YawRoundTrip(t *testing.T) {
-	// 180-degree yaw around +Y. Trace = -1. This is the edge case
-	// for matrix-to-quaternion conversion.
+
 	roundTripMatrix(t, "180yaw", [16]float64{
 		-1, 0, 0, 0,
 		0, 1, 0, 0,
@@ -61,7 +56,7 @@ func TestDecompose180YawRoundTrip(t *testing.T) {
 }
 
 func TestDecompose180PitchRoundTrip(t *testing.T) {
-	// 180-degree pitch around +X. Different edge case for trace.
+
 	roundTripMatrix(t, "180pitch", [16]float64{
 		1, 0, 0, 0,
 		0, -1, 0, 0,
@@ -71,7 +66,7 @@ func TestDecompose180PitchRoundTrip(t *testing.T) {
 }
 
 func TestDecompose180RollRoundTrip(t *testing.T) {
-	// 180-degree roll around +Z.
+
 	roundTripMatrix(t, "180roll", [16]float64{
 		-1, 0, 0, 0,
 		0, -1, 0, 0,

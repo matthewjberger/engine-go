@@ -1,7 +1,5 @@
 //go:build !js
 
-// Command indigo is the engine's editor: a dual-world ECS driving
-// the render graph through a pan-orbit camera.
 package main
 
 import (
@@ -85,8 +83,7 @@ func main() {
 		syncUiPointer(worlds)
 		ctx := newHudContext(worlds)
 		ctx.refreshHudLayout()
-		// Consume wheel before TickFrame so pan-orbit doesn't also
-		// zoom on the same wheel event.
+
 		ctx.updateTreeScroll()
 
 		app.TickFrame(worlds, demo, delta)
@@ -124,9 +121,6 @@ func main() {
 	}
 }
 
-// installDropCallback wires GLFW's drag-drop handler to load each
-// dropped .gltf or .glb file via [loadGltfInto] and refresh the UI
-// layout so newly spawned entities show up in the hierarchy panel.
 func installDropCallback(glfwWindow *glfw.Window, worlds app.Worlds, renderer *render.Renderer) {
 	glfwWindow.SetDropCallback(func(_ *glfw.Window, paths []string) {
 		for _, path := range paths {
@@ -146,9 +140,6 @@ func installDropCallback(glfwWindow *glfw.Window, worlds app.Worlds, renderer *r
 	})
 }
 
-// installInputCallbacks wires GLFW's cursor / mouse-button / scroll
-// callbacks to accumulate frame deltas into the engine world's Input
-// resource. tickFrame zeroes the deltas at the end of each frame.
 func installInputCallbacks(glfwWindow *glfw.Window, engine *ecs.World) {
 	var previousMouse transform.Vec2
 	var haveMouse bool
@@ -220,8 +211,6 @@ func installInputCallbacks(glfwWindow *glfw.Window, engine *ecs.World) {
 	})
 }
 
-// glfwKeyRune maps a subset of GLFW key codes to the uppercase ASCII
-// runes the Input resource expects: A-Z, space, and digits.
 func glfwKeyRune(key glfw.Key) (rune, bool) {
 	switch {
 	case key >= glfw.KeyA && key <= glfw.KeyZ:

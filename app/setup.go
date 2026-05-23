@@ -12,21 +12,8 @@ import (
 	"github.com/matthewjberger/indigo/window"
 )
 
-// EngineRef is the game-world resource pointing at the engine world.
-// Game systems read this to look up the engine world they should
-// sync into via the [SyncEngine...] helpers.
 type EngineRef struct{ World *ecs.World }
 
-// NewEngineWorld builds the engine-side ECS world every app shares:
-// the standard transform + RenderMesh + Light component types and
-// the resources the standard engine systems read (window, renderer,
-// mesh assets + primitives, input, graphics settings, propagation
-// state).
-//
-// Apps may register additional engine-side components and resources
-// after this returns. The order of any later [ecs.Register] calls
-// determines the bit positions for those types in this world; this
-// helper does not stabilize bit positions across apps.
 func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	engine := ecs.New()
 	ecs.Register[transform.LocalTransform](engine)
@@ -117,10 +104,6 @@ func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	return engine, nil
 }
 
-// Worlds bundles the engine, game, and UI worlds plus their
-// schedules. Use [NewWorlds] to construct one with cross-world
-// bridges (EngineRef on the game world, ui.WorldRef on the engine
-// world) pre-installed.
 type Worlds struct {
 	Engine *ecs.World
 	Game   *ecs.World
@@ -131,12 +114,6 @@ type Worlds struct {
 	UISchedule     *ecs.Schedule
 }
 
-// NewWorlds returns a fully-wired Worlds: engine world via
-// [NewEngineWorld], a game world with EngineRef installed, a UI
-// world with ui.WorldRef installed on the engine world, and empty
-// schedules ready for the app to populate. Eliminates the
-// hand-wiring of cross-world resource bridges that apps used to do
-// in their own setup.
 func NewWorlds(renderer *render.Renderer) (Worlds, error) {
 	engine, err := NewEngineWorld(renderer)
 	if err != nil {
@@ -161,14 +138,6 @@ func NewWorlds(renderer *render.Renderer) (Worlds, error) {
 	}, nil
 }
 
-// TickFrame runs the per-frame pre-render work: advance the window
-// timing on every present world, run game then engine then ui
-// schedules, run the app's optional [App] lifecycle hooks, apply any
-// deferred ECS commands.
-//
-// World.Step is intentionally deferred to [PostFrame] so the renderer
-// (which runs after this returns) can still see the current frame's
-// change-detection stamps.
 func TickFrame(worlds Worlds, hooks *App, delta float32) {
 	window.Advance(&ecs.MustResource[window.Window](worlds.Engine).Timing, delta)
 	window.Advance(&ecs.MustResource[window.Window](worlds.Game).Timing, delta)
@@ -199,9 +168,6 @@ func TickFrame(worlds Worlds, hooks *App, delta float32) {
 	}
 }
 
-// PostFrame finalizes the frame after the renderer has run: advance
-// each world's tick (rolls event queues, ages change-detection
-// watermarks) and clear the per-frame input deltas.
 func PostFrame(worlds Worlds) {
 	worlds.Engine.Step()
 	worlds.Game.Step()

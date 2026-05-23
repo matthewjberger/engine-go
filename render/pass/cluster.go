@@ -14,10 +14,6 @@ var clusterBoundsShader string
 //go:embed cluster_light_assign.wgsl
 var clusterLightAssignShader string
 
-// Cluster grid layout: 16x9x24 = 3456 clusters tiling the camera
-// frustum, with up to 256 local lights per cluster. Directional
-// lights live at the front of the lights buffer and skip cluster
-// culling entirely (they're iterated by every fragment).
 const (
 	ClusterGridX        uint32 = 16
 	ClusterGridY        uint32 = 9
@@ -26,49 +22,30 @@ const (
 	TotalClusters       uint32 = ClusterGridX * ClusterGridY * ClusterGridZ
 )
 
-// MaxLightsBuffer is the upper bound on lights uploaded into the
-// global lights storage buffer each frame.
 const MaxLightsBuffer uint32 = 1024
 
-// ClusterUniforms is the std140-equivalent uniform layout the
-// cluster bounds + cluster light assign + mesh shaders all share.
-// Field order and padding match the WGSL ClusterUniforms struct
-// exactly so the driver reads without surprises.
 type ClusterUniforms struct {
-	InverseProjection    [16]float32 // 64
-	ScreenSize           [2]float32  // 8
-	ZNear                float32     // 4
-	ZFar                 float32     // 4
-	ClusterCount         [4]uint32   // 16
-	TileSize             [2]float32  // 8
-	NumLights            uint32      // 4
-	NumDirectionalLights uint32      // 4
-	CameraPosition       [4]float32  // 16 (xyz + 1.0 pad)
+	InverseProjection    [16]float32
+	ScreenSize           [2]float32
+	ZNear                float32
+	ZFar                 float32
+	ClusterCount         [4]uint32
+	TileSize             [2]float32
+	NumLights            uint32
+	NumDirectionalLights uint32
+	CameraPosition       [4]float32
 }
 
-// ClusterBounds is the per-cluster view-space AABB the cluster
-// bounds compute pass writes and the cluster light assign pass
-// reads. 32 bytes per entry, TotalClusters entries in the buffer.
 type ClusterBounds struct {
 	MinPoint [4]float32
 	MaxPoint [4]float32
 }
 
-// LightGrid holds the per-cluster count of intersecting local
-// lights. The offset field is unused (the fragment shader reads
-// light_indices[cluster_idx * MaxLightsPerCluster + i] for i in
-// [0, count)) but kept so the WGSL struct layout stays
-// 16-byte-aligned and a future per-cluster offset table doesn't
-// require a struct migration.
 type LightGrid struct {
 	Offset uint32
 	Count  uint32
 }
 
-// LightGPU is the std430 GPU layout of one entry in the lights
-// storage buffer. 80 bytes. Field order matches the WGSL Light
-// struct in cluster_light_assign.wgsl + mesh.wgsl so the GPU
-// can read the buffer without offset shuffling.
 type LightGPU struct {
 	Position    [4]float32
 	Direction   [4]float32
@@ -88,30 +65,6 @@ const ClusterUniformsSize = uint64(unsafe.Sizeof(ClusterUniforms{}))
 const ClusterBoundsSize = uint64(unsafe.Sizeof(ClusterBounds{}))
 const LightGridSize = uint64(unsafe.Sizeof(LightGrid{}))
 
-// clusterResources owns the GPU objects that the cluster compute
-// + mesh draw share each frame: the two compute pipelines, the
-// shared bind groups, and the storage / uniform buffers backing
-// them. Constructed once at mesh-pass setup and destroyed when
-// the mesh pass releases.
-//
-// Buffer responsibilities:
-//
-//   - clusterUniforms (uniform): rewritten each frame from the
-//     active camera. Bound by both compute passes AND the mesh
-//     fragment shader.
-//   - viewMatrix (uniform): camera view rewritten each frame for
-//     the light-assign pass (lights are in world space and the
-//     culler transforms into view space per-light).
-//   - clusterBounds (storage): output of cluster_bounds compute.
-//     Persistent until the camera changes.
-//   - lights (storage): the world's lights packed via
-//     [packLights]. Directional lights first, then local lights.
-//   - lightGrid (storage RW): per-cluster (offset, count). Reset
-//     each frame via the precomputed zero buffer below.
-//   - lightGridReset (copy_src): zero-filled snapshot used to
-//     reset lightGrid before each light-assign dispatch.
-//   - lightIndices (storage RW): flat per-cluster slot table the
-//     light-assign pass writes into.
 type clusterResources struct {
 	boundsPipeline *wgpu.ComputePipeline
 	assignPipeline *wgpu.ComputePipeline
@@ -132,10 +85,6 @@ type clusterResources struct {
 	lights         *wgpu.Buffer
 }
 
-// newClusterResources allocates every cluster-side GPU buffer and
-// builds the two compute pipelines + their bind groups. Returns
-// the bundle for the mesh pass to own. Called once at NewMeshPass
-// time.
 func newClusterResources(device *wgpu.Device) (*clusterResources, error) {
 	r := &clusterResources{}
 

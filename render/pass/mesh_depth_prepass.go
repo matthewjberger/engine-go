@@ -20,12 +20,6 @@ type depthPrepass struct {
 	matsBg     *wgpu.BindGroup
 }
 
-// newDepthPrepassPipeline builds the depth-only sibling of the
-// static mesh pipeline. Shares the view_proj and per-handle bind
-// group layouts (groups 0 and 1); group 2 carries the material
-// storage buffer so the fragment shader can discard blend-mode
-// fragments without writing depth (otherwise the prepass would
-// occlude the OIT pass's transparent geometry).
 func newDepthPrepassPipeline(device *wgpu.Device, viewProjLayout, handleLayout *wgpu.BindGroupLayout, materialRegistry *asset.MaterialRegistry) (*depthPrepass, error) {
 	module, err := device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "mesh depth prepass shader",

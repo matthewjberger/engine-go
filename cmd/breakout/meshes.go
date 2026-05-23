@@ -6,10 +6,6 @@ import (
 	"github.com/matthewjberger/indigo/render/asset"
 )
 
-// whiteCubeVertices returns a 36-vertex unit cube with every vertex
-// colored white. Entities tint it through their [asset.Material]
-// component; the vertex color stays as a neutral multiplicand so the
-// material reads out exactly.
 func whiteCubeVertices() []asset.MeshVertex {
 	const s = 0.5
 	white := [4]float32{1, 1, 1, 1}
@@ -59,9 +55,6 @@ func whiteCubeVertices() []asset.MeshVertex {
 	return out
 }
 
-// brickPalette holds the per-row material colors plus the paddle and
-// ball colors. One white cube mesh + per-entity Material gives every
-// piece its own tint without registering N mesh variants.
 type brickPalette struct {
 	Cube   asset.MeshHandle
 	Rows   [][4]float32
@@ -69,9 +62,6 @@ type brickPalette struct {
 	Ball   [4]float32
 }
 
-// registerBreakoutPalette uploads the single white cube mesh used by
-// the paddle, ball, and bricks and returns it alongside the per-row /
-// per-element material colors.
 func registerBreakoutPalette(device *wgpu.Device, assets *asset.MeshAssets) (brickPalette, error) {
 	cube, err := assets.Register(device, "white_cube", whiteCubeVertices())
 	if err != nil {

@@ -9,21 +9,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// UpdateNormalLines emits one world-space line per vertex of every
-// drawn mesh when [render.Graphics.ShowNormals] is true.
-// Each line starts at the vertex's world position and points along
-// the vertex's world-space normal for
-// [render.Graphics.NormalLineLength] units.
-//
-// The world normal uses the upper-3x3 of the model matrix as the
-// normal matrix. That's accurate for uniform scale; non-uniform
-// scale would need a true transpose-inverse normal matrix, but
-// transform.Mat4 only carries TRS so the approximation is fine
-// for the editor scene.
-//
-// Push runs every frame so the lines pass picks the data up next
-// draw. Frame-by-frame regeneration is fine for an interactive
-// debug overlay; cost scales with total visible vertex count.
 func UpdateNormalLines(world *ecs.World) {
 	settings, ok := ecs.Resource[render.Graphics](world)
 	if !ok || !settings.ShowNormals {

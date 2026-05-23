@@ -6,18 +6,6 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 )
 
-// MaterialTextureArrays is the GPU storage for every PBR texture
-// every loaded material references. Two 2D array textures (sRGB
-// for color data — base color + emissive; linear for everything
-// else: normal, metallic-roughness, occlusion) hold up to MaxLayers
-// slices at LayerSize x LayerSize each, with a full mip chain per
-// layer. A single anisotropic sampler is bound alongside them; the
-// per-texture wrap modes are encoded in the packed layer integer
-// the material references (bits 16-19) and applied in the shader
-// at sample time.
-//
-// Default layout: 1024x1024x256, 16x anisotropic, sRGB/linear
-// pair, name-keyed deduplication.
 type MaterialTextureArrays struct {
 	LayerSize uint32
 	MaxLayers uint32
@@ -34,21 +22,12 @@ type MaterialTextureArrays struct {
 	layerByName map[string]uint32
 }
 
-// MaterialTextureArraysResource wraps the cache as a typed engine
-// resource so passes can look it up via [ecs.MustResource].
 type MaterialTextureArraysResource struct {
 	Arrays *MaterialTextureArrays
 }
 
-// NoTextureLayer is the sentinel packed layer value meaning "this
-// material slot has no texture; the shader should fall back to the
-// per-material factor only." Stored as 0xFFFFFFFF so a valid
-// (layer 0, repeat, repeat) never collides with it.
 const NoTextureLayer uint32 = 0xFFFFFFFF
 
-// WrapMode codes packed into the upper bits of a layer value.
-// Lower 16 bits hold the layer index; bits 16-17 hold the U wrap
-// mode, bits 18-19 hold V.
 type WrapMode uint8
 
 const (
@@ -57,22 +36,14 @@ const (
 	WrapClampToEdge    WrapMode = 2
 )
 
-// PackLayer returns the u32 value the GPU material buffer stores
-// for a (layer, wrapU, wrapV) tuple. Lower 16 bits: layer; bits
-// 16-17: wrapU; bits 18-19: wrapV. The shader extracts via
-// `layer & 0xFFFF` and `(packed >> 16) & 0x3` / `(packed >> 18) & 0x3`.
 func PackLayer(layer uint32, wrapU, wrapV WrapMode) uint32 {
 	return (layer & 0xFFFF) | (uint32(wrapU) << 16) | (uint32(wrapV) << 18)
 }
 
-// NewMaterialTextureArrays allocates the two texture arrays with
-// the default 1024x1024x256 layout. Apps that need different
-// limits can construct via [NewMaterialTextureArraysWith].
 func NewMaterialTextureArrays(device *wgpu.Device) (*MaterialTextureArrays, error) {
 	return NewMaterialTextureArraysWith(device, 1024, 256)
 }
 
-// NewMaterialTextureArraysWith is the explicit-size constructor.
 func NewMaterialTextureArraysWith(device *wgpu.Device, layerSize, maxLayers uint32) (*MaterialTextureArrays, error) {
 	mips := mipLevelCount(layerSize, layerSize)
 	arrays := &MaterialTextureArrays{
@@ -179,7 +150,6 @@ func NewMaterialTextureArraysWith(device *wgpu.Device, layerSize, maxLayers uint
 	return arrays, nil
 }
 
-// Release frees every GPU resource owned by the arrays.
 func (m *MaterialTextureArrays) Release() {
 	if m.Sampler != nil {
 		m.Sampler.Release()
@@ -203,14 +173,6 @@ func (m *MaterialTextureArrays) Release() {
 	}
 }
 
-// Upload writes pixels into the next free layer of the chosen
-// array and returns that layer index. Pixels must be RGBA8 sized
-// exactly LayerSize x LayerSize x 4 bytes. The loader's image
-// decoder is responsible for resizing to the array's tile size.
-//
-// name acts as a deduplication key (combined with the color
-// space): uploading the same (name, space) twice returns the
-// existing layer without re-uploading.
 func (m *MaterialTextureArrays) Upload(queue *wgpu.Queue, name string, space TextureColorSpace, pixels []byte) (uint32, error) {
 	key := name + colorSpaceTag(space)
 	if layer, ok := m.layerByName[key]; ok {

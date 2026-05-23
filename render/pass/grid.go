@@ -14,12 +14,6 @@ import (
 //go:embed grid.wgsl
 var gridShader string
 
-// gridUniform mirrors the WGSL Uniform struct in grid.wgsl. Field
-// order and padding are chosen so the Go struct lays out at the
-// offsets WGSL expects for a uniform-address-space struct (vec3<f32>
-// is align 16, size 12, leaving the next f32 to pack at offset 76).
-// Total size is 96 bytes; the trailing _pad fields are zero-filled
-// reserved space that matches the shader's `_pad0 / _pad1`.
 type gridUniform struct {
 	ViewProj       [16]float32
 	CameraWorldPos [3]float32
@@ -38,15 +32,6 @@ type gridPassState struct {
 	aspectFn        func() float32
 }
 
-// NewGridPass builds the engine's ground-plane grid pass: a fullscreen
-// procedurally-shaded quad rendered at y=-0.01 that follows the
-// camera, fades with distance, and highlights world X and Z axes. The
-// pass reads scene_color + depth, depth-tests against existing
-// geometry (no depth write), and alpha-blends on top.
-//
-// Uses standard-Z (Less / clear 1.0) with LessEqual on the grid
-// pipeline so the lines draw where the depth buffer is at or
-// beyond the grid's depth.
 func NewGridPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32) (*render.Pass, error) {
 	state := &gridPassState{aspectFn: aspect}
 

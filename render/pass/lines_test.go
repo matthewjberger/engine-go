@@ -57,9 +57,7 @@ func TestLinesAddBoxRespectsTransform(t *testing.T) {
 	if len(l.Segments) != 12 {
 		t.Fatalf("len = %d, want 12", len(l.Segments))
 	}
-	// Every endpoint must land in the translated cube's corner set
-	// {(10..11), (20..21), (30..31)} since the source bounds are a
-	// unit cube at origin.
+
 	for i, seg := range l.Segments {
 		for axis, base := range []float32{10, 20, 30} {
 			for _, v := range []float32{seg.Start[axis], seg.End[axis]} {

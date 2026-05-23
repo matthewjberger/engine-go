@@ -1,9 +1,3 @@
-// BRDF LUT pre-integration. One-time compute dispatch at startup.
-// Each texel (x, y) holds the integrated GGX + Charlie BRDF for a
-// given (NdotV, roughness) pair: the R + G channels feed the
-// specular IBL evaluation (split-sum approximation) and the B
-// channel feeds the sheen lobe. Output is a 256x256 rgba16float
-// texture.
 
 const PI: f32 = 3.14159265358979323846;
 const NUM_SAMPLES: u32 = 1024u;

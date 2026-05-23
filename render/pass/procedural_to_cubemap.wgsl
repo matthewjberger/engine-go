@@ -1,8 +1,3 @@
-// Procedural sky -> cubemap capture. Renders the sky shader into
-// a 6-face cubemap so the filter_envmap pass can pre-integrate
-// it into irradiance + prefiltered specular maps for IBL. Re-uses
-// the exact sky_color function from sky.wgsl so the captured
-// cubemap matches what gets drawn behind the scene.
 
 struct ProceduralUniform {
     output_size: u32,
@@ -135,11 +130,6 @@ fn fbm(p: vec3<f32>, octaves: i32) -> f32 {
     return value;
 }
 
-// apply_clouds layers fbm-driven cloud cover over an upper-
-// hemisphere sky color. dir is the world-space sample direction,
-// time drives slow horizontal drift, sun_direction is normalized
-// and used for the cloud lighting term. Returns the sky color
-// blended with shaded clouds for height > 0.
 fn apply_clouds(base: vec3<f32>, dir: vec3<f32>, sun_direction: vec3<f32>, time: f32) -> vec3<f32> {
     let height = dir.y;
     if (height <= 0.0) {

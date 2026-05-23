@@ -1,8 +1,3 @@
-// Instanced mesh draw. The world matrix per instance is produced
-// by the instanced transform compute (parent * local); the vertex
-// stage reads it by instance index and derives the normal matrix
-// from its upper 3x3 (valid for uniform scale). Lambert + ambient
-// shading, consistent with the engine's other simplified paths.
 
 struct ViewProj {
     view_proj: mat4x4<f32>,

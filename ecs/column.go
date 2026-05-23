@@ -5,10 +5,7 @@ import (
 	"unsafe"
 )
 
-// column is one component vec inside an archetype. The backing storage is
-// a reflect-allocated []T so the GC tracks any pointers inside T correctly.
-// dataPtr caches the address of the first element for hot-path indexing and
-// is refreshed whenever the backing array may have moved (on append).
+// slice stays a reflect-allocated []T so the GC keeps pointers inside T alive; dataPtr aliases its backing array and must be refreshed after every grow.
 type column struct {
 	slice    reflect.Value
 	elemType reflect.Type
@@ -46,9 +43,6 @@ func (c *column) pushZero(tick uint32) {
 	c.changed = append(c.changed, tick)
 }
 
-// migrateFrom moves the element at srcIndex out of src and appends it onto c.
-// The two columns must be for the same element type. src is compacted by the
-// caller via swapRemove after every column has been migrated.
 func (c *column) migrateFrom(src *column, srcIndex int, tick uint32) {
 	c.slice = reflect.Append(c.slice, src.slice.Index(srcIndex))
 	c.refresh()

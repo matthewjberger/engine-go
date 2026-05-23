@@ -1,14 +1,3 @@
-// Cluster light assignment compute pass: for each cluster in the
-// 16x9x24 grid, tests every local (point + spot) light's bounding
-// volume against the cluster's view-space AABB and writes the
-// intersecting light indices into a flat per-cluster slot table.
-// The fragment shader then consults light_grid[cluster].count and
-// reads light_indices[base + i] for each matched light, skipping
-// the all-lights loop.
-//
-// Directional lights live at the front of the lights buffer and
-// the mesh shader iterates them unconditionally; only the local
-// lights past num_directional_lights go through this culler.
 
 struct ClusterUniforms {
     inverse_projection: mat4x4<f32>,

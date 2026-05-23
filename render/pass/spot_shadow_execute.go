@@ -8,12 +8,6 @@ import (
 	"github.com/matthewjberger/indigo/render/asset"
 )
 
-// spotShadowExecute renders every active spot light's shadow into
-// its slot of the shared atlas. Each slot's view-projection has
-// already been multiplied by a clip-space atlas-region transform
-// in prepare, so the slot's geometry naturally clips to its 2x2
-// cell of the attachment without needing SetViewport. Works on
-// native and wasm.
 func spotShadowExecute(s any, context *render.PassContext) error {
 	state := s.(*spotShadowPassState)
 	shadow := state.shadow

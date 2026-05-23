@@ -39,12 +39,6 @@ type uiTextPassState struct {
 	atlas ui.FontAtlas
 }
 
-// NewUiTextPass builds the screen-space text pass that draws labels
-// attached to UI entities via [ui.Text]. The hand-rolled bitmap font
-// (see [ui.BuildFontAtlas]) is uploaded once at construction; each
-// frame the pass walks the UI world for entities with both a Node
-// and a Text, packs per-character glyph instances into a storage
-// buffer, and renders alpha-blended quads sampling the atlas.
 func NewUiTextPass(device *wgpu.Device, queue *wgpu.Queue, surfaceFormat wgpu.TextureFormat) (*render.Pass, error) {
 	atlas := ui.BuildFontAtlas()
 	state := &uiTextPassState{atlas: atlas}
@@ -336,18 +330,11 @@ func uiTextExecute(s any, context *render.PassContext) error {
 	return nil
 }
 
-// opaqueQuad is the screen-space rect + Z of an opaque UI quad that
-// can hide lower-Z text behind it. Built once per frame so each text
-// element doesn't re-query the world.
 type opaqueQuad struct {
 	rect ui.Rect
 	z    int32
 }
 
-// collectOpaqueQuads returns every node with Color alpha >= 1 that
-// has visible bounds. Text whose node Z is below an opaque quad's Z
-// and whose bounds are fully inside that quad is skipped by the
-// text pass (so popup panels actually cover labels behind them).
 func collectOpaqueQuads(uiWorld *ecs.World) []opaqueQuad {
 	mask := ecs.MustMaskOf[ui.Node](uiWorld) | ecs.MustMaskOf[ui.Color](uiWorld)
 	var out []opaqueQuad
@@ -367,12 +354,6 @@ func collectOpaqueQuads(uiWorld *ecs.World) []opaqueQuad {
 	return out
 }
 
-// textCovered reports whether textBounds (at textZ) is fully
-// contained by some opaque quad with a strictly higher Z. Used by
-// the text pass to skip glyphs that would be 100% hidden by a
-// popup background. Partial overlap doesn't skip the text — the
-// alpha-blended glyph still draws over the visible portion via
-// the normal text pass after the quad pass.
 func textCovered(textBounds ui.Rect, textZ int32, occluders []opaqueQuad) bool {
 	for i := range occluders {
 		q := &occluders[i]
@@ -386,12 +367,6 @@ func textCovered(textBounds ui.Rect, textZ int32, occluders []opaqueQuad) bool {
 	return false
 }
 
-// pointCovered reports whether the (x, y) glyph-center point is
-// inside any opaque higher-z quad. Used by the per-glyph text
-// emission loop so individual letters inside a popup get skipped
-// while the rest of the label (poking out to the side) still
-// renders. This handles partial overlap correctly without dropping
-// the whole label.
 func pointCovered(x, y float32, textZ int32, occluders []opaqueQuad) bool {
 	for i := range occluders {
 		q := &occluders[i]
@@ -406,12 +381,6 @@ func pointCovered(x, y float32, textZ int32, occluders []opaqueQuad) bool {
 	return false
 }
 
-// rectContains reports whether outer fully encloses inner. Used by
-// the text occlusion test: a label is only dropped when an opaque
-// higher-z rect covers every pixel it would draw to. Partial
-// overlap (text spilling past an occluder's edge) used to drop
-// the whole label, which hid hierarchy-row labels the moment they
-// poked into an open dropdown's X range.
 func rectContains(outer, inner ui.Rect) bool {
 	return outer.X <= inner.X &&
 		outer.Y <= inner.Y &&

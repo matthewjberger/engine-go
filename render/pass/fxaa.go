@@ -15,8 +15,6 @@ import (
 //go:embed fxaa.wgsl
 var fxaaShader string
 
-// fxaaParams matches the WGSL FxaaParams struct (texel + scalar
-// settings). 16 bytes total, no padding issues.
 type fxaaParams struct {
 	TexelX          float32
 	TexelY          float32
@@ -32,12 +30,6 @@ type fxaaPassState struct {
 	bindGroup       *wgpu.BindGroup
 }
 
-// NewFxaaPass builds the engine's FXAA antialiasing pass: sample
-// "input" with a fullscreen blit, run edge-detect + subpixel-blend,
-// write to "output". The cached bind group is rebuilt whenever
-// the input texture view changes via the render graph's
-// [render.Pass.InvalidateBindGroups] hook, which fires on resize
-// and any other resource-version bump.
 func NewFxaaPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (*render.Pass, error) {
 	state := &fxaaPassState{}
 

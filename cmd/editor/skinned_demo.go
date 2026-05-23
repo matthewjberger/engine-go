@@ -13,12 +13,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// spawnSkinnedDemo spawns a 2-joint bend test. The plane's bottom
-// edge is weighted to joint 0 (root, identity); the top edge is
-// weighted to joint 1 (the hinge). Joint 1 sits at the plane's
-// midline and is pre-rotated around its X axis, so the plane bends
-// statically in half. Validates the skinning vertex math without
-// an animation system or a glTF asset on disk.
 func spawnSkinnedDemo(worlds app.Worlds) {
 	assetsResource, ok := ecs.Resource[asset.SkinnedMeshAssetsResource](worlds.Engine)
 	if !ok || assetsResource == nil {
@@ -41,10 +35,6 @@ func spawnSkinnedDemo(worlds app.Worlds) {
 		return
 	}
 
-	// Joints carry the world-space position of the skinned mesh
-	// because the mesh entity's own transform is ignored by the
-	// skinning vertex shader (matches the glTF spec). Anchor the
-	// rig at (3, 0, -2) so it appears next to the orb cluster.
 	hingeAngle := float32(math.Pi / 3.5)
 	jointRoot := spawnSkinJoint(worlds, "Skin Root", transform.Vec3{3, 0, -2}, transform.QuatIdentity())
 	jointHinge := spawnSkinJoint(worlds, "Skin Hinge", transform.Vec3{3, 0.5, -2}, transform.QuatFromAxisAngle(hingeAngle, transform.Vec3{1, 0, 0}))
@@ -66,9 +56,7 @@ func spawnSkinnedDemo(worlds app.Worlds) {
 	ecs.Set(worlds.Engine, entity, local)
 	ecs.Set(worlds.Engine, entity, transform.IdentityGlobalTransform())
 	ecs.Set(worlds.Engine, entity, asset.SkinnedMesh{Mesh: handle, Skin: skin})
-	// Blend material so the bend plane exercises the skinned OIT
-	// path: a translucent rig validates weighted-blended output
-	// driven by the shared joint-matrix buffer.
+
 	mat := asset.DefaultMaterial()
 	mat.BaseColor = [4]float32{0.4, 0.7, 1.0, 0.55}
 	mat.AlphaMode = asset.AlphaModeBlend

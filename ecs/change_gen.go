@@ -4,9 +4,6 @@ package ecs
 
 import "unsafe"
 
-// IterChanged1 yields entities matching A (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged1[A any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -32,9 +29,6 @@ func IterChanged1[A any](world *World, extraInclude, exclude Mask, callback func
 	}
 }
 
-// IterChanged2 yields entities matching A, B (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged2[A, B any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -63,9 +57,6 @@ func IterChanged2[A, B any](world *World, extraInclude, exclude Mask, callback f
 	}
 }
 
-// IterChanged3 yields entities matching A, B, C (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged3[A, B, C any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -97,9 +88,6 @@ func IterChanged3[A, B, C any](world *World, extraInclude, exclude Mask, callbac
 	}
 }
 
-// IterChanged4 yields entities matching A, B, C, D (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged4[A, B, C, D any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -134,9 +122,6 @@ func IterChanged4[A, B, C, D any](world *World, extraInclude, exclude Mask, call
 	}
 }
 
-// IterChanged5 yields entities matching A, B, C, D, E (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged5[A, B, C, D, E any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D, e *E)) {
 	world.enterIter()
 	defer world.leaveIter()
@@ -174,9 +159,6 @@ func IterChanged5[A, B, C, D, E any](world *World, extraInclude, exclude Mask, c
 	}
 }
 
-// IterChanged6 yields entities matching A, B, C, D, E, F (plus
-// extraInclude, minus exclude) where AT LEAST ONE of the listed columns
-// was stamped after the previous frame's watermark.
 func IterChanged6[A, B, C, D, E, F any](world *World, extraInclude, exclude Mask, callback func(entity Entity, a *A, b *B, c *C, d *D, e *E, f *F)) {
 	world.enterIter()
 	defer world.leaveIter()

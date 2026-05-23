@@ -10,10 +10,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// UpdateGizmos runs hit-testing + drag for the gizmo overlay. Must
-// run BEFORE [render.UpdatePanOrbitCamera] in the engine schedule so the
-// camera controller can read [render.Gizmos.Dragging] / [render.Gizmos.HoverAxis]
-// this frame and skip its own input.
 func UpdateGizmos(world *ecs.World) {
 	if !ecs.HasResource[*render.Gizmos](world) {
 		return
@@ -207,9 +203,6 @@ func applyLocalGizmo(world *ecs.World, entity ecs.Entity, mutate func(*transform
 	transform.MarkDirty(world, entity)
 }
 
-// AddGizmoPass binds [NewGizmoPass] into the render graph writing
-// into colorID (typically fxaa_output so the overlay lands on top
-// of the antialiased scene before present).
 func AddGizmoPass(renderer *render.Renderer, colorID render.ResourceID) (*render.Pass, error) {
 	pass, err := NewGizmoPass(renderer.Device, renderer.SurfaceFormat, renderer.AspectRatio)
 	if err != nil {

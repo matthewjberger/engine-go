@@ -14,28 +14,8 @@ import (
 //go:embed mesh.wgsl
 var meshShader string
 
-// sharedMeshPassState exposes the mesh pass's per-handle bookkeeping
-// to sibling passes (shadow_depth today) that draw the same
-// geometry without duplicating the per-entity slot tracking.
-// Lifetime: stays valid from NewMeshPass through meshRelease.
 var sharedMeshPassState atomic.Value
 
-// meshPassState is the long-lived state the mesh pass keeps.
-//
-//   - viewProjBindGroup (group 0): view * projection uniform.
-//   - globalBindGroup   (group 1): clustered-lighting bindings
-//     (lights / light_grid / light_indices / cluster_uniforms /
-//     view_matrix) + sRGB / linear texture array views + the
-//     shared sampler. The cluster compute passes write into the
-//     same lights / light_grid / light_indices buffers from
-//     [clusterResources], so the read-only views the mesh shader
-//     binds here are consistent the moment the compute passes
-//     finish.
-//   - per-handle bind group (group 2): models / materials /
-//     entity_ids storage buffers for that handle's instances.
-//   - iblBindGroup (group 3): irradiance cube + prefiltered cube +
-//     BRDF LUT + ibl sampler. Built once at pass setup from the
-//     [IBL] bundle the engine world owns.
 type meshPassState struct {
 	pipeline       *wgpu.RenderPipeline
 	depthPrepass   *depthPrepass
@@ -59,27 +39,11 @@ type meshPassState struct {
 
 	aspectFn func() float32
 
-	// clusterUniformsScratch is reused across frames to avoid
-	// reallocating the per-frame ClusterUniforms upload value.
 	clusterUniformsScratch ClusterUniforms
 	lightScratch           []LightGPU
 	identityScratch        []uint32
 }
 
-// NewMeshPass builds the engine's instanced PBR mesh pass.
-//
-// View * projection lives in a small uniform updated every frame;
-// per-entity model matrices, materials, and entity IDs live in
-// per-handle storage buffers, sparse-updated via [ecs.IterChanged]
-// on the respective components. Each entity gets a stable slot in
-// its handle's buffers so the GPU side only writes the entries
-// that changed this frame. Materials are sampled from the global
-// [asset.MaterialTextureArrays] resource, bound once at pass setup.
-//
-// The constructor orchestrates four sibling files' worth of setup
-// code: bind-group layouts + buffers + pipeline live in
-// [mesh_layouts.go], per-handle bookkeeping in [mesh_handle.go],
-// per-frame work in [mesh_frame.go].
 func NewMeshPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32, arrays *asset.MaterialTextureArrays, registry *asset.MaterialRegistry, ibl *IBL, shadow *Shadow, spotShadow *SpotShadow, pointShadow *PointShadow) (*render.Pass, error) {
 	state := &meshPassState{
 		perHandle:    make(map[asset.MeshHandle]*handleInstances, 4),

@@ -1,8 +1,3 @@
-// HudContext is the per-frame pointer-bundle every HUD system
-// reads — gathered once at frame start so refresh / input
-// functions don't repeat `ecs.MustResource[...]` lookups. This
-// file also holds the tiny formatting helpers that produce the
-// inspector's POS/ROT/SCL/MAT label strings.
 package main
 
 import (
@@ -15,10 +10,6 @@ import (
 	"github.com/matthewjberger/indigo/ui"
 )
 
-// HudContext is the per-frame snapshot of pointers HUD systems
-// share. Computed once at the top of the frame and passed by
-// pointer to every refresh / handler function so they stop
-// repeating ecs.MustResource[...] lookups.
 type HudContext struct {
 	Worlds  app.Worlds
 	Engine  *ecs.World
@@ -56,20 +47,12 @@ func (c *HudContext) setColor(entity ecs.Entity, rgba [4]float32) {
 	}
 }
 
-// caretBlinkPeriodSeconds is the half-period of the text-input
-// caret blink: the caret is visible for one period and hidden for
-// the next, so the full cycle is 2 * caretBlinkPeriodSeconds.
 const caretBlinkPeriodSeconds = 0.5
 
-// caretVisible reports whether the blinking caret should be drawn
-// this frame given the engine uptime in seconds.
 func caretVisible(uptime float32) bool {
 	return int(uptime/caretBlinkPeriodSeconds)%2 == 0
 }
 
-// namedEntity pairs an engine entity with its display name for
-// the hierarchy tree's sorted row list. Lives in this file
-// because it's a HUD-side projection of [app.Name].
 type namedEntity struct {
 	Entity ecs.Entity
 	Name   string

@@ -31,8 +31,7 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>) {
     let y = min(row * cell_h + cell_h / 2u, dims.y - 1u);
     let color = textureLoad(hdr_texture, vec2<i32>(i32(x), i32(y)), 0).rgb;
     let lum = max(luminance(color), 1e-4);
-    // Clamp the per-sample contribution so a single HDR hot spot
-    // can't yank the mean off the bulk of the scene.
+
     shared_lum[lid.x] = clamp(log2(lum), -10.0, 4.0);
     workgroupBarrier();
 

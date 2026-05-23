@@ -34,10 +34,6 @@ type skinnedMeshPassState struct {
 	globalGroup    *wgpu.BindGroup
 	aspectFn       func() float32
 
-	// One shared handle bind group binds the joint-matrix buffer +
-	// the per-instance data buffer; every same-mesh draw group
-	// indexes its slice by instance_index. Rebuilt when either
-	// backing buffer reallocates.
 	handleBindGroup *wgpu.BindGroup
 	jointGen        uint64
 	instancesGen    uint64
@@ -45,11 +41,6 @@ type skinnedMeshPassState struct {
 	instancesBuffer *wgpu.Buffer
 }
 
-// AddSkinnedMeshPass registers the skinned mesh render pass. It
-// runs after the static mesh pass and writes the same scene_color
-// + entity_id + view_normals attachments so the postprocess and
-// G-buffer-consuming passes work uniformly across static and
-// skinned geometry.
 func AddSkinnedMeshPass(renderer *render.Renderer) (*render.Pass, error) {
 	state, err := newSkinnedMeshState(renderer.Device, renderer.AspectRatio)
 	if err != nil {
@@ -236,10 +227,6 @@ func newSkinnedMeshState(device *wgpu.Device, aspect func() float32) (*skinnedMe
 	}, nil
 }
 
-// skinnedHandleBindGroup returns a cached bind group binding the
-// shared joint-matrix + per-instance buffers, rebuilding it when
-// either reallocates. Shared by the opaque skinned + (mirrored in)
-// shadow + OIT skinned paths.
 func ensureSkinnedHandleBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, cached **wgpu.BindGroup, jointGen, instGen *uint64, jointBuf, instBuf **wgpu.Buffer, sc *SkinningCompute) *wgpu.BindGroup {
 	joint := sc.JointMatrixBuffer()
 	instances := sc.InstancesBuffer()
@@ -403,10 +390,6 @@ func skinnedMeshRelease(s any) {
 	}
 }
 
-// applyDirectionalToSkinned folds the first directional light's
-// color (premultiplied by intensity) and -Z forward direction into
-// the skinned lighting uniform. Shared by the opaque + OIT skinned
-// passes.
 func applyDirectionalToSkinned(world *ecs.World, uniforms *skinnedUniforms) {
 	lightMask := ecs.MustMaskOf[render.Light](world)
 	world.ForEach(lightMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {

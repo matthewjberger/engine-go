@@ -80,14 +80,6 @@ func sortStableByZ(indices []int, z []int32) {
 	}
 }
 
-// NewUiQuadPass builds the screen-space colored-rectangle pass. Each
-// frame it walks the UI world for entities with both [ui.Node] and
-// [ui.Color], packs their resolved screen-space rectangles + colors
-// into a per-frame storage buffer, and draws an instanced triangle
-// strip into the supplied color attachment with alpha blending. The
-// caller wires the pass's "color" slot to whichever target should
-// receive the UI overlay (the editor app uses fxaa_output so the
-// UI lands on top of the antialiased scene before present).
 func NewUiQuadPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (*render.Pass, error) {
 	state := &uiQuadPassState{}
 

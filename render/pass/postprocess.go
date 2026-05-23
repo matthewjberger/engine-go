@@ -39,16 +39,6 @@ type postprocessPassState struct {
 	lastAutoExposureBuf     *wgpu.Buffer
 }
 
-// NewPostProcessPass builds the HDR -> LDR composition pass. The
-// fragment shader samples the bound HDR scene_color, applies an
-// exposure scale + ACES filmic tonemap, and writes the result
-// into the LDR output target. Output format is the surface format
-// so subsequent UI / fxaa / present passes can sample it without
-// another conversion.
-//
-// Bind group is rebuilt via the [render.Pass.InvalidateBindGroups]
-// hook when the input view changes (resize, transient
-// reallocation, external view replacement).
 func NewPostProcessPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, bloom *render.Pass) (*render.Pass, error) {
 	state := &postprocessPassState{bloom: bloom}
 

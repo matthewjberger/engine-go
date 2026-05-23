@@ -1,8 +1,5 @@
 package ecs
 
-// Changed reports whether component T on entity was stamped after the
-// previous frame's watermark. False for stale handles, missing components,
-// or types not registered on this world.
 func Changed[T any](world *World, entity Entity) bool {
 	info, ok := componentInfoFor[T](world)
 	if !ok {

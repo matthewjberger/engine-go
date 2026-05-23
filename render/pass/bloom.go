@@ -16,9 +16,6 @@ var bloomDownsampleShader string
 //go:embed bloom_upsample.wgsl
 var bloomUpsampleShader string
 
-// BloomMipCount is the length of the downsample chain. Each mip is
-// half the previous. Five steps gives a wide-radius bloom at modest
-// VRAM cost.
 const BloomMipCount = 5
 
 type bloomDownsampleParams struct {
@@ -61,10 +58,6 @@ type bloomPassState struct {
 	filterRadius float32
 }
 
-// NewBloomPass builds the bloom pipeline pair (downsample +
-// upsample) + per-mip uniform buffers. The mip chain itself is
-// (re)created lazily by ensureMipChain when the input dimensions
-// change or on the first execute.
 func NewBloomPass(device *wgpu.Device) (*render.Pass, error) {
 	state := &bloomPassState{
 		device:       device,
@@ -450,9 +443,6 @@ func bloomRelease(s any) {
 	}
 }
 
-// bloomInputSize peeks at the bound input slot's texture handle to
-// pull the current width/height so the mip chain can be sized
-// without piping the renderer config through PassContext.
 func bloomInputSize(context *render.PassContext) (uint32, uint32, error) {
 	id, ok := context.Slots["input"]
 	if !ok {
@@ -462,9 +452,6 @@ func bloomInputSize(context *render.PassContext) (uint32, uint32, error) {
 	return handle.Width, handle.Height, nil
 }
 
-// bloomBuildMipChain (re)creates the descending half-resolution
-// mip textures + views. Frees prior allocations first; never grows
-// an existing texture in place.
 func bloomBuildMipChain(state *bloomPassState, width, height uint32) error {
 	for index := range state.mipViews {
 		if state.mipViews[index] != nil {
@@ -519,8 +506,6 @@ func bloomBuildMipChain(state *bloomPassState, width, height uint32) error {
 	return nil
 }
 
-// BloomMipView returns the topmost (largest) bloom mip view so the
-// postprocess pass can sample it for the composite.
 func BloomMipView(p *render.Pass) *wgpu.TextureView {
 	state, ok := p.State.(*bloomPassState)
 	if !ok || len(state.mipViews) == 0 {
@@ -529,10 +514,6 @@ func BloomMipView(p *render.Pass) *wgpu.TextureView {
 	return state.mipViews[0]
 }
 
-// AddBloomPass registers a bloom pass that reads scene_color and
-// produces a downsampled+upsampled bloom mip-0 stored on the pass
-// state. The postprocess pass samples [BloomMipView] when
-// compositing.
 func AddBloomPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewBloomPass(renderer.Device)
 	if err != nil {

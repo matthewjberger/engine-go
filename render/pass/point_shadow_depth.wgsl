@@ -26,12 +26,6 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
     return out;
 }
 
-// Stores normalized light-to-fragment distance ([0,1]) so the mesh
-// shader can compare against the same normalization, matching the
-// reference engine's omnidirectional shadow technique.
-// Stores normalized light-to-fragment distance ([0,1]) so the mesh
-// shader can compare against the same normalization, matching the
-// reference engine's omnidirectional shadow technique.
 @fragment
 fn fragment_main(in: VertexOutput) -> @location(0) f32 {
     let distance = length(in.world_position - uniforms.light_position);

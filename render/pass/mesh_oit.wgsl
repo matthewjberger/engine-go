@@ -1,6 +1,3 @@
-// Weighted-blended OIT accumulation. accum (One+One additive),
-// reveal (Zero+OneMinusSrc multiplicative). Composite resolves
-// accum.rgb / accum.a with (1 - reveal) as the over-alpha.
 
 struct ViewProj {
     view_proj:       mat4x4<f32>,
@@ -92,8 +89,7 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
     out.color = input.color;
     out.material_index = material_indices[slot];
     out.entity_id = entity_ids[slot];
-    // The cascade-uniform here drives the depth-aware weight in
-    // fs_main. Linear positive depth (camera-forward distance).
+
     out.view_z = max(clip.w, 0.0001);
     return out;
 }
@@ -106,7 +102,7 @@ fn oit_weight(view_z: f32, a: f32) -> f32 {
 
 @fragment
 fn fragment_main(in: VertexOutput) -> OitOutput {
-    // Derivatives must come from uniform control flow.
+
     let ddx_uv = dpdx(in.uv);
     let ddy_uv = dpdy(in.uv);
 

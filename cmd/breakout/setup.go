@@ -1,6 +1,3 @@
-// Setup wires the breakout app: engine + game worlds, the
-// breakout-specific camera and lighting, the render-graph
-// configuration (mesh -> fxaa -> present), and the brick wall.
 package main
 
 import (
@@ -17,9 +14,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// PaletteResource is stashed as a resource so the reset system can
-// spawn a fresh wall of bricks with the right per-row material
-// colors against the shared white-cube mesh.
 type PaletteResource struct {
 	Palette brickPalette
 }
@@ -87,9 +81,6 @@ func buildWorlds(renderer *render.Renderer) (app.Worlds, *app.App) {
 	return worlds, demo
 }
 
-// breakoutCamera returns a near-top-down camera tilted forward a bit
-// so block tops + front faces are both visible, giving the
-// directional light something to shade.
 func breakoutCamera() render.Camera {
 	camera := render.DefaultCamera()
 	camera.Eye = transform.Vec3{0, 11, 4}
@@ -99,9 +90,6 @@ func breakoutCamera() render.Camera {
 	return camera
 }
 
-// spawnBreakoutSun puts a directional light on the engine world
-// pointing diagonally down (mostly -Y with a -Z lean) so the brick
-// tops and the brick front faces both pick up Lambert shading.
 func spawnBreakoutSun(engine *ecs.World) {
 	mask := ecs.MustMaskOf[transform.LocalTransform](engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](engine) |
@@ -119,11 +107,6 @@ func spawnBreakoutSun(engine *ecs.World) {
 	})
 }
 
-// breakoutApp wires the render pipeline: mesh -> fxaa -> ui_quad ->
-// ui_text -> present. Mesh is the first writer of scene_color and
-// its clear-on-load supplies the dark background; UI lands on top
-// of the antialiased scene before present so the bitmap font stays
-// crisp.
 func breakoutApp() *app.App {
 	return &app.App{
 		ConfigureRenderGraph: func(world *ecs.World, renderer *render.Renderer) {
@@ -175,8 +158,6 @@ func breakoutApp() *app.App {
 	}
 }
 
-// breakoutResetSystem rebuilds the brick wall and resets the ball
-// when the input system sets [GameState.RequestReset].
 func breakoutResetSystem(game *ecs.World) {
 	state := ecs.MustResource[GameState](game)
 	if !state.RequestReset {

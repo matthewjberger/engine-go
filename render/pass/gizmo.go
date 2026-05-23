@@ -11,9 +11,6 @@ import (
 
 const GizmoAxisCount = 3
 
-// gizmoAxisScreenLength is constant in screen space, not world
-// space, so the gizmo keeps the same pixel size regardless of
-// camera distance.
 const gizmoAxisScreenLength float32 = 110
 
 const (
@@ -23,7 +20,6 @@ const (
 	gizmoOriginRadiusPx       float32 = 4
 )
 
-// AxisColor returns red for X, green for Y, blue for Z.
 func AxisColor(axis uint8) [4]float32 {
 	switch axis {
 	case 0:
@@ -48,11 +44,6 @@ func AxisDirection(axis uint8) mgl32.Vec3 {
 	}
 }
 
-// LocalAxes returns the three normalized rotation columns of a
-// world-space matrix. Used by the gizmo to orient its arrows along
-// the selected entity's local X / Y / Z axes so the handles rotate
-// with the entity. Falls back to world axes when the matrix has a
-// degenerate (zero-length) column.
 func LocalAxes(matrix mgl32.Mat4) [3]mgl32.Vec3 {
 	var axes [3]mgl32.Vec3
 	for axis := 0; axis < 3; axis++ {
@@ -66,8 +57,6 @@ func LocalAxes(matrix mgl32.Mat4) [3]mgl32.Vec3 {
 	return axes
 }
 
-// SelectedTarget returns the first entity carrying a [render.Selected]
-// tag, or the zero entity if nothing is selected.
 func SelectedTarget(world *ecs.World) (ecs.Entity, bool) {
 	mask := ecs.MustMaskOf[render.Selected](world)
 	var found ecs.Entity
@@ -81,9 +70,6 @@ func SelectedTarget(world *ecs.World) (ecs.Entity, bool) {
 	return found, hasFound
 }
 
-// GizmoScreenPositions projects the entity origin and the three
-// axis endpoints into screen space. The bool per axis is false if
-// the endpoint landed behind the camera.
 func GizmoScreenPositions(origin mgl32.Vec3, axes [3]mgl32.Vec3, viewProj mgl32.Mat4, viewport [2]float32, worldLength float32) (mgl32.Vec2, [3]mgl32.Vec2, [3]bool) {
 	originScreen, originValid := projectWorld(origin, viewProj, viewport)
 	var ends [3]mgl32.Vec2
@@ -103,12 +89,6 @@ func GizmoScreenPositions(origin mgl32.Vec3, axes [3]mgl32.Vec3, viewProj mgl32.
 	return originScreen, ends, valid
 }
 
-// AxisWorldLengthForScreen returns the world-space distance that
-// projects to screenLength pixels at the depth of origin under a
-// perspective projection with half-vertical-FOV tanHalfFovY. A
-// 1-unit world segment at view distance d covers
-// viewport_height / (2*d*tanHalfFovY) pixels, so the inverse
-// scales screenLength by 2*d*tanHalfFovY/viewport_height.
 func AxisWorldLengthForScreen(origin mgl32.Vec3, viewProj mgl32.Mat4, viewport [2]float32, tanHalfFovY, screenLength float32) float32 {
 	clip := viewProj.Mul4x1(mgl32.Vec4{origin.X(), origin.Y(), origin.Z(), 1})
 	w := clip.W()
@@ -118,9 +98,6 @@ func AxisWorldLengthForScreen(origin mgl32.Vec3, viewProj mgl32.Mat4, viewport [
 	return screenLength * 2 * w * tanHalfFovY / viewport[1]
 }
 
-// ProjectWorld is the public form of projectWorld for callers
-// outside the package who need the same perspective-divide +
-// pixel-mapping routine the gizmo overlay uses.
 func ProjectWorld(p mgl32.Vec3, viewProj mgl32.Mat4, viewport [2]float32) (mgl32.Vec2, bool) {
 	return projectWorld(p, viewProj, viewport)
 }
@@ -137,9 +114,6 @@ func projectWorld(p mgl32.Vec3, viewProj mgl32.Mat4, viewport [2]float32) (mgl32
 	return mgl32.Vec2{screenX, screenY}, true
 }
 
-// ParametricTOnSegment returns the signed parametric position of p
-// projected perpendicularly onto the infinite line through a..b
-// (NOT clamped to [0,1]). a corresponds to t=0, b to t=1.
 func ParametricTOnSegment(p, a, b mgl32.Vec2) float32 {
 	ab := b.Sub(a)
 	lengthSq := ab.Dot(ab)
@@ -149,10 +123,6 @@ func ParametricTOnSegment(p, a, b mgl32.Vec2) float32 {
 	return p.Sub(a).Dot(ab) / lengthSq
 }
 
-// DistanceToSegment returns the perpendicular distance from point
-// p to the line segment a..b, in the same coordinate space as the
-// inputs. Used by the gizmo CPU hit test to decide whether the
-// mouse is over an axis line.
 func DistanceToSegment(p, a, b mgl32.Vec2) float32 {
 	ab := b.Sub(a)
 	ap := p.Sub(a)
@@ -170,16 +140,8 @@ func DistanceToSegment(p, a, b mgl32.Vec2) float32 {
 	return p.Sub(proj).Len()
 }
 
-// RingSegmentCount is the number of straight-line chords the rotate
-// gizmo decomposes each ring into. 64 is enough to look smooth at
-// typical sizes without flooding the instance buffer.
 const RingSegmentCount = 64
 
-// RingBasis picks two world-space basis vectors that span the plane
-// perpendicular to axis. The first is "right-ish," the second is
-// "up-ish"; together with axis they form a right-handed frame.
-// When axis is near world up, world X is used as the seed instead
-// so the cross product stays non-degenerate.
 func RingBasis(axis mgl32.Vec3) (mgl32.Vec3, mgl32.Vec3) {
 	worldUp := mgl32.Vec3{0, 1, 0}
 	if math.Abs(float64(axis.Y())) > 0.9 {
@@ -190,9 +152,6 @@ func RingBasis(axis mgl32.Vec3) (mgl32.Vec3, mgl32.Vec3) {
 	return u, v
 }
 
-// MouseRay casts a ray from the camera through the given pixel and
-// returns its world-space origin (near plane) and direction. Uses
-// the inverse of viewProj to unproject the NDC point.
 func MouseRay(mouseX, mouseY float32, viewProj mgl32.Mat4, viewport [2]float32) (mgl32.Vec3, mgl32.Vec3) {
 	invVP := viewProj.Inv()
 	ndcX := mouseX/viewport[0]*2 - 1
@@ -207,10 +166,6 @@ func MouseRay(mouseX, mouseY float32, viewProj mgl32.Mat4, viewport [2]float32) 
 	return near, far.Sub(near).Normalize()
 }
 
-// RayPlaneIntersect returns the world-space point where the ray
-// (origin, direction) crosses the plane defined by planePoint and
-// planeNormal. The bool is false when the ray is parallel to the
-// plane or the intersection is behind the origin.
 func RayPlaneIntersect(origin, direction, planePoint, planeNormal mgl32.Vec3) (mgl32.Vec3, bool) {
 	denom := direction.Dot(planeNormal)
 	if math.Abs(float64(denom)) < 1e-6 {
@@ -223,19 +178,10 @@ func RayPlaneIntersect(origin, direction, planePoint, planeNormal mgl32.Vec3) (m
 	return origin.Add(direction.Mul(t)), true
 }
 
-// ProjectOntoPlane removes the component of v parallel to
-// planeNormal so the result lies in the plane.
 func ProjectOntoPlane(v, planeNormal mgl32.Vec3) mgl32.Vec3 {
 	return v.Sub(planeNormal.Mul(v.Dot(planeNormal)))
 }
 
-// RingScreenPoints samples a world-space circle in the plane
-// perpendicular to axis, of the given radius and centered at
-// origin, and projects each sample into screen space. Returns the
-// per-sample screen position plus a flag for whether the projection
-// landed in front of the camera. RingSegmentCount + 1 entries are
-// produced so callers can iterate consecutive pairs to form
-// segments (the last point repeats the first).
 func RingScreenPoints(origin mgl32.Vec3, axis mgl32.Vec3, radius float32, viewProj mgl32.Mat4, viewport [2]float32) ([RingSegmentCount + 1]mgl32.Vec2, [RingSegmentCount + 1]bool) {
 	u, v := RingBasis(axis)
 	var points [RingSegmentCount + 1]mgl32.Vec2

@@ -19,22 +19,12 @@ import (
 //go:embed point_shadow_depth.wgsl
 var pointShadowDepthShader string
 
-// MaxPointShadows caps how many point lights can simultaneously
-// write into the cube-array depth texture. Same limit the
-// reference uses.
 const MaxPointShadows = 4
 
-// PointShadowFaceSize is the per-face side length. Six faces per
-// light times MaxPointShadows lights = 24 array layers.
 const PointShadowFaceSize uint32 = 512
 
-// PointShadowFaces is the cube face count. WebGPU's cube_array
-// uses 6 layers per cube; nightshade hard-codes this everywhere
-// too.
 const PointShadowFaces = 6
 
-// pointShadowFaceAxes mirrors the reference engine's
-// CUBEMAP_FACE_DIRECTIONS: (forward, up) pair per face.
 var pointShadowFaceAxes = [PointShadowFaces][2]mgl32.Vec3{
 	{{1, 0, 0}, {0, -1, 0}},
 	{{-1, 0, 0}, {0, -1, 0}},
@@ -44,13 +34,6 @@ var pointShadowFaceAxes = [PointShadowFaces][2]mgl32.Vec3{
 	{{0, 0, -1}, {0, -1, 0}},
 }
 
-// PointShadow owns a cube-array R32Float texture (6*N layers,
-// each a face's normalized-distance image), a transient depth
-// texture used as the depth attachment while rendering any one
-// face (reused across all faces since faces never need each
-// other's depth), one set of per-face view-projection uniforms,
-// and the mesh-side storage buffer of per-light shadow data
-// (position, range, bias).
 type PointShadow struct {
 	Texture       *wgpu.Texture
 	CubeArrayView *wgpu.TextureView
@@ -99,9 +82,6 @@ type pointShadowMeshUniform struct {
 	Pad2    uint32
 }
 
-// NewPointShadow allocates the cube-array texture + per-face
-// views + sampler + face-uniform buffer (256-byte aligned slots,
-// one per (light, face) pair) + mesh-side data buffer.
 func NewPointShadow(device *wgpu.Device) (*PointShadow, error) {
 	shadow := &PointShadow{}
 	tex, err := device.CreateTexture(&wgpu.TextureDescriptor{
@@ -215,10 +195,6 @@ func NewPointShadow(device *wgpu.Device) (*PointShadow, error) {
 	return shadow, nil
 }
 
-// pointShadowFaceUniformStride is the per-face uniform slot size,
-// rounded up to the WebGPU minimum dynamic-uniform alignment of
-// 256 bytes so each face's uniform can be bound at a different
-// offset of the same buffer.
 const pointShadowFaceUniformStride uint64 = 256
 
 type pointShadowCandidate struct {
@@ -236,11 +212,6 @@ type pointShadowPassState struct {
 	faceBgs       [MaxPointShadows * PointShadowFaces]*wgpu.BindGroup
 }
 
-// AddPointShadowPass builds the omnidirectional shadow pass.
-// Gathers point lights with CastShadows=true, takes the closest
-// MaxPointShadows, computes 6 face view-projections per light,
-// and renders the scene's non-light geometry into each face's
-// R32Float layer of the cube array.
 func AddPointShadowPass(renderer *render.Renderer, shadow *PointShadow) (*render.Pass, error) {
 	shaderModule, err := renderer.Device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label:          "point shadow shader",
@@ -310,9 +281,7 @@ func AddPointShadowPass(renderer *render.Renderer, shadow *PointShadow) (*render
 		Primitive: wgpu.PrimitiveState{
 			Topology: wgpu.PrimitiveTopologyTriangleList,
 			CullMode: wgpu.CullModeBack,
-			// Y-flip in the projection inverts triangle winding from
-			// the rasterizer's perspective; with FrontFaceCw the
-			// original CCW-front meshes still get culled correctly.
+
 			FrontFace: wgpu.FrontFaceCW,
 		},
 		DepthStencil: &wgpu.DepthStencilState{
@@ -424,11 +393,7 @@ func pointShadowPrepare(s any, context *render.PassContext) error {
 			rangeValue = 0.5
 		}
 		baseProj := spotPerspectiveZO(float32(math.Pi/2), 1.0, 0.1, rangeValue)
-		// WebGPU cubemap faces are authored with Y pointing down
-		// relative to the world-space face directions; flip Y in
-		// the projection so the rendered face matches the cube
-		// layout the hardware samples from by direction. Matches
-		// the reference engine's Y_FLIP_MATRIX * base_projection.
+
 		yFlip := mgl32.Mat4{
 			1, 0, 0, 0,
 			0, -1, 0, 0,

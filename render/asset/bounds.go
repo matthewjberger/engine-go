@@ -2,17 +2,11 @@ package asset
 
 import "math"
 
-// BoundingVolume is an axis-aligned bounding box in mesh-local
-// coordinates. Stored alongside each registered mesh so render passes
-// and editor systems can ask "what's the local-space extent of this
-// mesh" without re-walking the vertex data every frame.
 type BoundingVolume struct {
 	Min [3]float32
 	Max [3]float32
 }
 
-// ComputeBounds returns the AABB enclosing every vertex position in
-// vertices. An empty slice produces a zero-extent box at the origin.
 func ComputeBounds(vertices []MeshVertex) BoundingVolume {
 	if len(vertices) == 0 {
 		return BoundingVolume{}
@@ -37,7 +31,6 @@ func ComputeBounds(vertices []MeshVertex) BoundingVolume {
 	return BoundingVolume{Min: min, Max: max}
 }
 
-// Center returns the AABB midpoint.
 func (b BoundingVolume) Center() [3]float32 {
 	return [3]float32{
 		(b.Min[0] + b.Max[0]) * 0.5,
@@ -46,7 +39,6 @@ func (b BoundingVolume) Center() [3]float32 {
 	}
 }
 
-// Radius returns the sphere radius bounding the AABB.
 func (b BoundingVolume) Radius() float32 {
 	dx := (b.Max[0] - b.Min[0]) * 0.5
 	dy := (b.Max[1] - b.Min[1]) * 0.5
@@ -54,7 +46,6 @@ func (b BoundingVolume) Radius() float32 {
 	return float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
 }
 
-// Corners returns the eight corner points of the AABB.
 func (b BoundingVolume) Corners() [8][3]float32 {
 	return [8][3]float32{
 		{b.Min[0], b.Min[1], b.Min[2]},
@@ -68,8 +59,6 @@ func (b BoundingVolume) Corners() [8][3]float32 {
 	}
 }
 
-// EdgeIndices returns the 24 corner-index pairs (12 edges) that make
-// up the box's wireframe. Caller pairs these with [Corners].
 var BoundingBoxEdges = [24]uint8{
 	0, 1, 1, 2, 2, 3, 3, 0,
 	4, 5, 5, 6, 6, 7, 7, 4,

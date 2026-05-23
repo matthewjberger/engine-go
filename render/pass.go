@@ -8,50 +8,31 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 )
 
-// PassContext is what a pass's Prepare and Execute functions
-// receive each frame. Every pointer is borrowed for the duration
-// of the call and must not be retained.
-//
-// The slot lookup uses the pass-local name (e.g. "color"), not the graph-
-// global resource name. The graph wires those at compile time.
 type PassContext struct {
 	Device  *wgpu.Device
 	Queue   *wgpu.Queue
 	Encoder *wgpu.CommandEncoder
 
-	// World is the engine's ECS world. Passes extract per-frame data
-	// (camera, lights, input) from it inside Prepare and upload as
-	// uniforms.
 	World *ecs.World
 
 	Resources *Resources
 	Slots     map[string]ResourceID
 
-	// PassIndex is the position of this pass in the execution order. Used
-	// by the graph to decide whether a slot's first use is a clear.
 	PassIndex int
 
-	// ClearOps tracks the (pass, resource) pairs that should clear-on-load.
-	// Indexed by ClearKey so a pass can ask "should I clear this attachment".
 	ClearOps map[ClearKey]struct{}
 }
 
-// ClearKey identifies a single attachment use within the graph. A pass
-// clears a resource only when (PassIndex, ResourceID) is the first writer
-// of that resource and the descriptor declared a clear color/depth.
 type ClearKey struct {
 	PassIndex  int
 	ResourceID ResourceID
 }
 
-// Slot returns the resource id bound to slot, or false if the slot is
-// not bound on this pass.
 func (c *PassContext) Slot(slot string) (ResourceID, bool) {
 	id, ok := c.Slots[slot]
 	return id, ok
 }
 
-// Resource returns the runtime handle for the resource bound to slot.
 func (c *PassContext) Resource(slot string) (*TextureHandle, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
@@ -60,9 +41,6 @@ func (c *PassContext) Resource(slot string) (*TextureHandle, error) {
 	return c.Resources.Handle(id), nil
 }
 
-// TextureView returns the texture view for the resource bound to slot.
-// Use it from a pass that samples the slot as an input (e.g. a blit
-// reading scene_color).
 func (c *PassContext) TextureView(slot string) (*wgpu.TextureView, error) {
 	handle, err := c.Resource(slot)
 	if err != nil {
@@ -74,12 +52,6 @@ func (c *PassContext) TextureView(slot string) (*wgpu.TextureView, error) {
 	return handle.View, nil
 }
 
-// ColorAttachment returns a fully-prepared
-// [wgpu.RenderPassColorAttachment] for slot, ready to drop into a
-// render-pass descriptor. The load op is Clear iff this pass is the
-// first writer of the resource and the descriptor declared a clear
-// color, else Load. ClearValue is always populated (wgpu ignores it
-// when the load op is Load).
 func (c *PassContext) ColorAttachment(slot string) (wgpu.RenderPassColorAttachment, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
@@ -106,11 +78,6 @@ func (c *PassContext) ColorAttachment(slot string) (wgpu.RenderPassColorAttachme
 	}, nil
 }
 
-// DepthAttachment returns a fully-prepared
-// [wgpu.RenderPassDepthStencilAttachment] for slot. Same first-write
-// clear rule as [PassContext.ColorAttachment]. Caller takes the
-// address to drop it into a render-pass descriptor's
-// DepthStencilAttachment field.
 func (c *PassContext) DepthAttachment(slot string) (wgpu.RenderPassDepthStencilAttachment, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
@@ -137,35 +104,18 @@ func (c *PassContext) DepthAttachment(slot string) (wgpu.RenderPassDepthStencilA
 	}, nil
 }
 
-// Pass is a render-graph node. State lives in the [State] field
-// (any-typed so the graph stays generic); per-pass logic is
-// function values the graph calls.
-//
-// Reads and Writes declare slot names that must be wired to resources
-// before the graph compiles.
 type Pass struct {
 	Name   string
 	Reads  []string
 	Writes []string
 
-	// State holds whatever the pass needs across frames (pipeline,
-	// vertex buffer, uniform binding). The graph never touches it.
 	State any
 
-	// Prepare runs before Execute every frame. Use it to upload uniforms
-	// extracted from the ECS world. nil means "skip".
 	Prepare func(state any, context *PassContext) error
 
-	// Execute records GPU commands for the frame. nil means "no-op".
 	Execute func(state any, context *PassContext) error
 
-	// InvalidateBindGroups is called by the graph before Prepare when
-	// any resource bound to one of the pass's slots has changed
-	// version since the previous frame (its handle was replaced;
-	// either external view refresh or transient reallocation).
-	// nil means "no caching to drop".
 	InvalidateBindGroups func(state any)
 
-	// Release frees GPU objects held in State. nil means "nothing to release".
 	Release func(state any)
 }

@@ -15,10 +15,6 @@ import (
 //go:embed sky.wgsl
 var skyShader string
 
-// skyUniform mirrors the WGSL Uniform struct in sky.wgsl. 224 bytes
-// total: three mat4x4 (proj, proj_inv, view), one vec4 (cam_pos), one
-// f32 (time), three f32 padding. The padding keeps the struct's tail
-// at the 16-byte alignment WGSL requires.
 type skyUniform struct {
 	Proj    [16]float32
 	ProjInv [16]float32
@@ -38,16 +34,6 @@ type skyPassState struct {
 	aspectFn        func() float32
 }
 
-// NewSkyPass builds the engine's procedural sky pass. Draws a
-// fullscreen triangle that fills scene_color with a sky+ground
-// gradient plus a small sun disk and drifting clouds, reconstructing
-// per-pixel world directions from the camera's inverse projection.
-// Single procedural atmosphere mode (no HDR / nebula / day-night).
-//
-// The pass writes only "color" (no depth), so it should appear FIRST
-// in the graph: as the first writer of scene_color it gets the
-// clear-on-load op, and subsequent passes (mesh, grid) overwrite the
-// pixels they cover.
 func NewSkyPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat, aspect func() float32) (*render.Pass, error) {
 	state := &skyPassState{aspectFn: aspect}
 

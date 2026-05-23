@@ -32,11 +32,11 @@ func TestLocalTransformIdentityForward(t *testing.T) {
 func TestLocalTransformForwardRotatedYaw90(t *testing.T) {
 	tr := transform.IdentityLocalTransform()
 	tr.Rotation = transform.QuatFromAxisAngle(float32(math.Pi/2), transform.Vec3{0, 1, 0})
-	// 90 deg yaw around +Y: forward (-Z) rotates to -X.
+
 	if got := tr.Forward(); !vec3ApproxEqual(got, transform.Vec3{-1, 0, 0}, directionEpsilon) {
 		t.Errorf("yaw 90 forward = %v, want {-1 0 0}", got)
 	}
-	// Right (+X) rotates to -Z.
+
 	if got := tr.Right(); !vec3ApproxEqual(got, transform.Vec3{0, 0, -1}, directionEpsilon) {
 		t.Errorf("yaw 90 right = %v, want {0 0 -1}", got)
 	}

@@ -11,10 +11,6 @@ import (
 //go:embed present.wgsl
 var presentShader string
 
-// presentPassState owns the GPU objects the present pass needs across
-// frames. The bind group is cached and rebuilt on demand: the graph
-// invokes the pass's InvalidateBindGroups hook whenever the "input"
-// resource changes version, which is the trigger to drop the cache.
 type presentPassState struct {
 	pipeline        *wgpu.RenderPipeline
 	bindGroupLayout *wgpu.BindGroupLayout
@@ -22,11 +18,6 @@ type presentPassState struct {
 	bindGroup       *wgpu.BindGroup
 }
 
-// NewPresentPass builds the final pass of the default render graph:
-// a fullscreen blit that samples scene_color and writes to the
-// swapchain. Uses the resource-version hook for bind-group
-// invalidation so a swapchain or scene_color resize doesn't leave
-// a stale view bound.
 func NewPresentPass(device *wgpu.Device, surfaceFormat wgpu.TextureFormat) (*render.Pass, error) {
 	state := &presentPassState{}
 

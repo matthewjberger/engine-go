@@ -1,10 +1,3 @@
-// Skinned mesh shader. Vertex stage blends position + normal by
-// up to 4 joint matrices per vertex (matching the reference
-// engine's per-influence accumulation form); fragment stage
-// samples the material's base color texture from the shared
-// material texture array and shades with a basic Lambert +
-// ambient model. Output lands in scene_color so the postprocess
-// chain (SSAO, bloom, tonemap) still applies.
 
 struct ViewProj {
     view_proj: mat4x4<f32>,
@@ -62,12 +55,7 @@ const NO_TEXTURE_LAYER: u32 = 0xFFFFFFFFu;
 
 @vertex
 fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32) -> VertexOutput {
-    // Per glTF spec: when a node has a skin, the node's own
-    // transform is ignored -- joint matrices already encode every
-    // bind-pose-to-world transformation. Per-influence
-    // accumulation form (weight * (M * pos) summed over 4) is
-    // mathematically equivalent to (sum(weight * M)) * pos but
-    // plays nicer with non-affine joint matrices.
+
     let position = vec4<f32>(input.position.xyz, 1.0);
     let normal = input.normal.xyz;
     let joint_offset = instances[instance_index].joint_offset;

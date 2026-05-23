@@ -1,8 +1,3 @@
-// Per-frame HUD input handlers: pointer sync, text-input
-// driving, right-click context menu placement, click routing for
-// menu buttons + tree rows, and the menu-close-on-outside-click
-// hit test. None of these own state — they read [HudContext]
-// resources and dispatch into engine-side helpers.
 package main
 
 import (

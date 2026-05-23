@@ -9,11 +9,6 @@ import (
 	"github.com/matthewjberger/indigo/transform"
 )
 
-// spawnBlendedSpheres scatters a row of unit cubes with the orb
-// mesh (a UV sphere proxy) using Material.AlphaMode == Blend at
-// varying alphas so the weighted-OIT pass has something to
-// composite. Placed off to one side of the demo scene so they
-// don't overlap the existing static scene.
 func spawnBlendedSpheres(worlds app.Worlds, orbMesh asset.MeshHandle) {
 	mask := ecs.MustMaskOf[transform.LocalTransform](worlds.Engine) |
 		ecs.MustMaskOf[transform.GlobalTransform](worlds.Engine) |

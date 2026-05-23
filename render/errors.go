@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// ErrSurfaceLost is returned (wrapped) by [Renderer.RenderFrame] when the
-// swap chain needs to be rebuilt. Recover by calling [Renderer.Reconfigure]
-// and retrying on the next frame. Match it with [errors.Is].
 var ErrSurfaceLost = errors.New("wgpu surface lost or outdated")
 
 var recoverableSurfaceMessages = []string{

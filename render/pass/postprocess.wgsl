@@ -1,8 +1,3 @@
-// Postprocess pass: HDR scene_color in, LDR ldr_color out.
-// Applies an exposure scale and an ACES filmic tonemap. The
-// pipeline can grow extra knobs (auto-exposure, bloom composite,
-// color grading) by adding more uniform fields and shader steps;
-// the bind layout already routes a uniform buffer at binding 2.
 
 struct Uniform {
     exposure: f32,
@@ -62,11 +57,6 @@ fn tonemap_aces(color: vec3<f32>) -> vec3<f32> {
     return clamp((color * (a * color + b)) / (color * (c * color + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-// linear_to_srgb encodes a linear color into sRGB transfer space.
-// The renderer selects a non-sRGB swapchain format so the GPU
-// doesn't apply gamma automatically; we apply the IEC 61966-2-1
-// piecewise curve here so the display sees correctly-encoded
-// pixels regardless of the chosen surface format.
 fn linear_to_srgb(linear: vec3<f32>) -> vec3<f32> {
     let cutoff = step(linear, vec3<f32>(0.0031308));
     let lower = linear * 12.92;

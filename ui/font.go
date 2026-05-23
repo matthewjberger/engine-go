@@ -2,24 +2,12 @@ package ui
 
 import "strings"
 
-// FontGlyphWidth + FontGlyphHeight are the pixel dimensions of one
-// glyph in the bitmap atlas. The font is fixed-width 5x7 with one
-// pixel of right-side advance built in (renderable cell is 5x7,
-// advance is 6 pixels).
 const (
 	FontGlyphWidth  = 5
 	FontGlyphHeight = 7
 	FontAdvance     = 6
 )
 
-// fontGlyphs is indigo's hand-rolled 5x7 bitmap font. Each entry is
-// seven rows of '#' / '.' separated by newlines; the atlas baker
-// expands those into a single-channel texture. ASCII glyphs outside
-// this map are drawn as a blank cell at runtime; lowercase letters
-// fall back to their uppercase form via [glyphFor].
-//
-// Hand-rolled rather than third-party so the engine has no font
-// dependency to ship with wasm builds.
 var fontGlyphs = map[rune]string{
 	' ': ".....\n.....\n.....\n.....\n.....\n.....\n.....",
 	'!': "..#..\n..#..\n..#..\n..#..\n..#..\n.....\n..#..",
@@ -72,10 +60,6 @@ var fontGlyphs = map[rune]string{
 	'Z': "#####\n....#\n...#.\n..#..\n.#...\n#....\n#####",
 }
 
-// glyphFor returns the bitmap pattern to draw for r. Unsupported
-// runes (control chars, non-ASCII) render as a blank glyph; ASCII
-// lowercase letters fall back to their uppercase form so apps don't
-// need to think about case when writing labels.
 func glyphFor(r rune) string {
 	if g, ok := fontGlyphs[r]; ok {
 		return g
@@ -88,9 +72,6 @@ func glyphFor(r rune) string {
 	return fontGlyphs[' ']
 }
 
-// FontAtlas describes the bitmap font's expanded form: a single
-// row of glyphs in a single-channel byte texture, with the rune-to-
-// column mapping recorded for the renderer.
 type FontAtlas struct {
 	Pixels      []byte
 	Width       uint32
@@ -101,13 +82,6 @@ type FontAtlas struct {
 	GlyphHeight uint32
 }
 
-// BuildFontAtlas expands the hand-rolled glyph map into a byte
-// texture laid out as a single row of fixed-width cells. Cell N
-// holds glyph at column index N; [FontAtlas.GlyphOf] maps from rune
-// to column index.
-//
-// A blank "missing-glyph" cell is always present at column 0 so the
-// shader can sample it for any rune the map doesn't cover.
 func BuildFontAtlas() FontAtlas {
 	runes := sortedRunes()
 	count := uint32(len(runes)) + 1
@@ -165,9 +139,6 @@ func writeGlyph(pixels []byte, atlasWidth uint32, col uint32, pattern string) {
 	}
 }
 
-// LookupGlyph returns the atlas column for r, or 0 (the blank
-// missing-glyph cell) for any rune that isn't in the atlas.
-// Lowercase ASCII falls back to uppercase.
 func (a *FontAtlas) LookupGlyph(r rune) uint32 {
 	if col, ok := a.GlyphOf[r]; ok {
 		return col

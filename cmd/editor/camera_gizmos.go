@@ -18,11 +18,6 @@ const (
 	cameraUpTriangleSize = 0.18
 )
 
-// cameraGizmoPickExtents returns the world-space extents of an
-// invisible unit-cube child that covers the visible camera gizmo
-// (body + lens) so a GPU pick at any pixel of the gizmo resolves
-// to the camera entity. Derived from the gizmo constants so the
-// click target tracks the gizmo body if those change.
 func cameraGizmoPickExtents() transform.Vec3 {
 	width := float32(cameraBodyHalfWidth * 2)
 	if w := float32(cameraLensRadius * 2); w > width {
@@ -36,10 +31,6 @@ func cameraGizmoPickExtents() transform.Vec3 {
 	return transform.Vec3{width, height, depth}
 }
 
-// drawCameraGizmos walks render.CameraMarker entities and appends
-// a wireframe pyramid + lens cone + "up" triangle to the engine's
-// Lines resource. The pattern mirrors the lamp gizmo a standard
-// DCC tool draws for a scene camera.
 func drawCameraGizmos(engine *ecs.World) {
 	if !ecs.HasResource[pass.LinesResource](engine) {
 		return
@@ -61,11 +52,6 @@ func drawCameraGizmos(engine *ecs.World) {
 	})
 }
 
-// drawCameraGizmoFor emits the wireframe segments for a single
-// camera. Composed of three parts: a small box body behind the
-// origin, a cone running from origin forward by lensLength out
-// to the lens-rim square, and a flat triangle sitting on top of
-// the body indicating which way is up.
 func drawCameraGizmoFor(lines *pass.Lines, origin, right, up, forward mgl32.Vec3, color [4]float32) {
 	rightHalf := right.Mul(cameraBodyHalfWidth)
 	upHalf := up.Mul(cameraBodyHalfHeight)

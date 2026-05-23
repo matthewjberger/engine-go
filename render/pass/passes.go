@@ -1,16 +1,3 @@
-// Pass constructor convention. Two-layer API:
-//
-//   - NewXPass(device, ...): builds the pass instance, allocates
-//     its GPU resources, returns *render.Pass. Useful for tests
-//     and custom render graphs that wire passes manually.
-//
-//   - AddXPass(renderer, ...): wraps NewXPass and registers the
-//     result with the renderer's graph. The convenience for
-//     normal app setup — apps in cmd/* call only Add*Pass.
-//
-// New constructors should follow this pair where useful; passes
-// that are only meaningful when graph-registered (cull compute,
-// skinning compute) may expose only Add*Pass.
 package pass
 
 import (
@@ -20,9 +7,6 @@ import (
 	"github.com/matthewjberger/indigo/render/asset"
 )
 
-// AddSkyPass builds the standard sky pass and registers it with the
-// renderer's graph as a writer of scene_color. Returns the pass for
-// callers that want a reference; the graph owns its release.
 func AddSkyPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewSkyPass(renderer.Device, render.HdrFormat, renderer.AspectRatio)
 	if err != nil {
@@ -36,11 +20,6 @@ func AddSkyPass(renderer *render.Renderer) (*render.Pass, error) {
 	return pass, nil
 }
 
-// AddMeshPass builds the standard mesh pass and registers it as a
-// writer of scene_color, depth, and the entity_id pick target.
-// arrays is the engine-world's [asset.MaterialTextureArrays] (PBR
-// texture source); ibl is the [IBL] bundle the fragment shader
-// samples for ambient diffuse + specular.
 func AddMeshPass(renderer *render.Renderer, arrays *asset.MaterialTextureArrays, registry *asset.MaterialRegistry, ibl *IBL, shadow *Shadow, spotShadow *SpotShadow, pointShadow *PointShadow) (*render.Pass, error) {
 	pass, err := NewMeshPass(renderer.Device, render.HdrFormat, renderer.AspectRatio, arrays, registry, ibl, shadow, spotShadow, pointShadow)
 	if err != nil {
@@ -57,9 +36,6 @@ func AddMeshPass(renderer *render.Renderer, arrays *asset.MaterialTextureArrays,
 	return pass, nil
 }
 
-// AddGridPass builds the standard ground-grid pass. Reads scene_color
-// + depth (loads, no clear) so it composites over whatever the mesh
-// pass already wrote.
 func AddGridPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewGridPass(renderer.Device, render.HdrFormat, renderer.AspectRatio)
 	if err != nil {
@@ -74,10 +50,6 @@ func AddGridPass(renderer *render.Renderer) (*render.Pass, error) {
 	return pass, nil
 }
 
-// AddFxaaPass registers a transient fxaa_output color texture sized
-// to the current renderer config, builds the FXAA pass to sample
-// scene_color into it, and returns the new transient's render.ResourceID
-// so the caller can wire the next stage (typically [AddPresentPass]).
 func AddFxaaPass(renderer *render.Renderer) (*render.Pass, render.ResourceID, error) {
 	fxaaOutputID := renderer.Graph.AddColorTexture(render.ResourceDescriptor{
 		Name: "fxaa_output",
@@ -102,11 +74,6 @@ func AddFxaaPass(renderer *render.Renderer) (*render.Pass, render.ResourceID, er
 	return pass, fxaaOutputID, nil
 }
 
-// AddPostProcessPass builds the HDR -> LDR tonemap pass. Reads
-// scene_color (HDR) and writes ldr_color (surface format). Must
-// run after every 3D pass that writes scene_color (sky / mesh /
-// grid / lines / outline) and before fxaa + UI passes. Pass a
-// non-nil bloom pass to composite its mip-0 output before tonemap.
 func AddPostProcessPass(renderer *render.Renderer, bloom *render.Pass) (*render.Pass, error) {
 	pass, err := NewPostProcessPass(renderer.Device, renderer.SurfaceFormat, bloom)
 	if err != nil {
@@ -121,9 +88,6 @@ func AddPostProcessPass(renderer *render.Renderer, bloom *render.Pass) (*render.
 	return pass, nil
 }
 
-// AddPickingPass builds the picking pass and wires it to read the
-// entity_id texture the mesh pass writes. The pass only does work
-// when a pick request is queued through the [Picking] resource.
 func AddPickingPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewPickingPass(renderer.Device)
 	if err != nil {
@@ -137,9 +101,6 @@ func AddPickingPass(renderer *render.Renderer) (*render.Pass, error) {
 	return pass, nil
 }
 
-// AddUiQuadPass builds the UI colored-rectangle pass and binds it
-// to write into colorID (typically fxaa_output so the UI lands on
-// top of the antialiased scene before present).
 func AddUiQuadPass(renderer *render.Renderer, colorID render.ResourceID) (*render.Pass, error) {
 	pass, err := NewUiQuadPass(renderer.Device, renderer.SurfaceFormat)
 	if err != nil {
@@ -153,10 +114,6 @@ func AddUiQuadPass(renderer *render.Renderer, colorID render.ResourceID) (*rende
 	return pass, nil
 }
 
-// AddUiTextPass builds the UI text pass and binds it to write into
-// colorID (typically the same buffer the UI quad pass writes to,
-// inserted after it in the graph so glyphs draw on top of any
-// background panels).
 func AddUiTextPass(renderer *render.Renderer, colorID render.ResourceID) (*render.Pass, error) {
 	pass, err := NewUiTextPass(renderer.Device, renderer.Queue, renderer.SurfaceFormat)
 	if err != nil {
@@ -170,8 +127,6 @@ func AddUiTextPass(renderer *render.Renderer, colorID render.ResourceID) (*rende
 	return pass, nil
 }
 
-// AddSelectionMaskPass builds the selection-mask pass. Reads the
-// entity_id texture, writes the selection_mask transient.
 func AddSelectionMaskPass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewSelectionMaskPass(renderer.Device)
 	if err != nil {
@@ -186,9 +141,6 @@ func AddSelectionMaskPass(renderer *render.Renderer) (*render.Pass, error) {
 	return pass, nil
 }
 
-// AddOutlinePass builds the editor outline post-process. Reads
-// selection_mask, alpha-blends an outline color into scene_color
-// along the dilated mask boundary.
 func AddOutlinePass(renderer *render.Renderer) (*render.Pass, error) {
 	pass, err := NewOutlinePass(renderer.Device, render.HdrFormat, func() (uint32, uint32) {
 		return renderer.Config.Width, renderer.Config.Height
@@ -205,8 +157,6 @@ func AddOutlinePass(renderer *render.Renderer) (*render.Pass, error) {
 	return pass, nil
 }
 
-// AddPresentPass builds the final present pass: samples inputID and
-// blits to the swapchain.
 func AddPresentPass(renderer *render.Renderer, inputID render.ResourceID) (*render.Pass, error) {
 	pass, err := NewPresentPass(renderer.Device, renderer.SurfaceFormat)
 	if err != nil {
