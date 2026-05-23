@@ -11,8 +11,23 @@ struct Uniform {
     ssao_enabled: f32,
     ssgi_enabled: f32,
     ssgi_intensity: f32,
+    auto_exposure_enabled: f32,
+    auto_exposure_target: f32,
+    auto_exposure_min_scale: f32,
+    auto_exposure_max_scale: f32,
     _pad0: f32,
     _pad1: f32,
+};
+
+struct AutoExposureBuffer {
+    target_log_luminance:  f32,
+    current_log_luminance: f32,
+    adaptation_rate:       f32,
+    delta_time:            f32,
+    primed:                u32,
+    _pad0:                 u32,
+    _pad1:                 u32,
+    _pad2:                 u32,
 };
 
 @group(0) @binding(0) var hdr_texture: texture_2d<f32>;
@@ -24,6 +39,7 @@ struct Uniform {
 @group(0) @binding(6) var ssao_sampler: sampler;
 @group(0) @binding(7) var ssgi_texture: texture_2d<f32>;
 @group(0) @binding(8) var ssgi_sampler: sampler;
+@group(0) @binding(9) var<uniform> auto_exposure: AutoExposureBuffer;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -80,7 +96,18 @@ fn fragment_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let bloom = textureSample(bloom_texture, bloom_sampler, in.uv).rgb;
         color = color + bloom * u.bloom_intensity;
     }
-    let exposed = color * u.exposure;
+    var effective_exposure = u.exposure;
+    if u.auto_exposure_enabled > 0.5 {
+        let avg_lum = exp2(auto_exposure.current_log_luminance);
+        let target_lum = max(u.auto_exposure_target, 1e-4);
+        let auto_scale = clamp(
+            target_lum / max(avg_lum, 1e-4),
+            u.auto_exposure_min_scale,
+            u.auto_exposure_max_scale,
+        );
+        effective_exposure = effective_exposure * auto_scale;
+    }
+    let exposed = color * effective_exposure;
     let tonemapped = tonemap_aces(exposed);
     return vec4<f32>(linear_to_srgb(tonemapped), hdr.a);
 }
