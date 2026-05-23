@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // AnyTextInputFocused reports whether the focused entity carries a

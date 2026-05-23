@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // Builder is a thin imperative DSL for assembling a UI tree on a UI

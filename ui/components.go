@@ -17,7 +17,7 @@
 package ui
 
 import (
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // Anchor describes how a Node's position is interpreted relative to

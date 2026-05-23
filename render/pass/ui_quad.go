@@ -6,9 +6,9 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 //go:embed ui_quad.wgsl

@@ -7,7 +7,7 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // MaxJointsPerSkin caps the joint count any one skinned mesh can

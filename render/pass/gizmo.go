@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
 )
 
 const GizmoAxisCount = 3

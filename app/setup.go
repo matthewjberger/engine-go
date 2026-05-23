@@ -3,13 +3,13 @@ package app
 import (
 	"fmt"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/render/pass"
-	"indigo/transform"
-	"indigo/ui"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/render/pass"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // EngineRef is the game-world resource pointing at the engine world.

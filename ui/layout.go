@@ -3,8 +3,8 @@ package ui
 import (
 	"sort"
 
-	"indigo/ecs"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // LayoutSystem resolves every UI Node's screen-space rectangle each

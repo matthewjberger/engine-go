@@ -1,6 +1,6 @@
 package render
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // PickProxy redirects a GPU-pick hit on the carrying entity to a
 // different target entity. Used so editor gizmos (camera, light)

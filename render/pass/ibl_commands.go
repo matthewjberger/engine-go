@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"indigo/ecs"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
 )
 
 // RebuildIbl is a render-queue command that re-runs the IBL bake

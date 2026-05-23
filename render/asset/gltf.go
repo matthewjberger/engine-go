@@ -23,8 +23,8 @@ import (
 	"github.com/qmuntal/gltf/modeler"
 	xdraw "golang.org/x/image/draw"
 
-	"indigo/ecs"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // LoadedScene is the result of parsing a glTF file: a flat list of

@@ -7,7 +7,7 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/render"
+	"github.com/matthewjberger/indigo/render"
 )
 
 //go:embed bloom_downsample.wgsl

@@ -1,8 +1,8 @@
 package app
 
 import (
-	"indigo/ecs"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // SyncEngineTransform writes a full LocalTransform onto the engine

@@ -3,9 +3,9 @@ package app_test
 import (
 	"testing"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 func newEngineGame(t *testing.T) (*ecs.World, *ecs.World) {

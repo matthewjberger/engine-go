@@ -14,10 +14,10 @@ import (
 	"github.com/cogentcore/webgpu/wgpuglfw"
 	"github.com/go-gl/glfw/v3.3/glfw"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/window"
 )
 
 func init() {

@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"indigo/ecs"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // NewWorld returns a fresh ECS world configured for UI: every UI

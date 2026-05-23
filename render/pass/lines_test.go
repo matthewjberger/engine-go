@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/render/asset"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 func TestLinesAddSegment(t *testing.T) {

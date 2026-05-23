@@ -7,8 +7,8 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/render"
-	"indigo/render/asset"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
 )
 
 // createViewProjLayout returns the group 0 bind-group layout: one

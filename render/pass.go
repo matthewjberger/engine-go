@@ -5,7 +5,7 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // PassContext is what a pass's Prepare and Execute functions

@@ -8,9 +8,9 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 //go:embed gizmo.wgsl

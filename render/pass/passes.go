@@ -3,8 +3,8 @@ package pass
 import (
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/render"
-	"indigo/render/asset"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
 )
 
 // AddSkyPass builds the standard sky pass and registers it with the

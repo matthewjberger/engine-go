@@ -1,6 +1,6 @@
 package app
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // EngineEntity is the component a game-side entity uses to point at
 // its engine-side counterpart. In the dual-world pattern, a game

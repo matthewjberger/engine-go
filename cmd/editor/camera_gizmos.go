@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/pass"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/pass"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 const (

@@ -3,7 +3,7 @@ package pass
 import (
 	_ "embed"
 	"fmt"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/render"
 
 	"github.com/cogentcore/webgpu/wgpu"
 )

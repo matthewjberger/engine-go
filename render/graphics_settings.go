@@ -1,8 +1,8 @@
 package render
 
 import (
-	"indigo/ecs"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 // GraphicsSettings is the engine's runtime toggle resource. Each

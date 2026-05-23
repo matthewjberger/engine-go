@@ -6,7 +6,7 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // SlotBinding wires a pass-local slot name to a graph resource. The graph

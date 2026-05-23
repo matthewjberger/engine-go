@@ -7,9 +7,9 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/window"
 )
 
 //go:embed fxaa.wgsl

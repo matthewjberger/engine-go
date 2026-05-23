@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/transform"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // AnimationPlayer is the per-entity component that drives glTF

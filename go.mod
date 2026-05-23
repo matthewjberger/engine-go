@@ -1,4 +1,4 @@
-module indigo
+module github.com/matthewjberger/indigo
 
 go 1.25.0
 

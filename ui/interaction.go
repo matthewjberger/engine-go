@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // PointerState mirrors the engine-side mouse for the UI world's

@@ -6,11 +6,11 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // spawnSkinnedDemo spawns a 2-joint bend test. The plane's bottom

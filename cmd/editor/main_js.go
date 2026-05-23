@@ -12,13 +12,13 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/pass"
-	"indigo/transform"
-	"indigo/ui"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/pass"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // pendingDrops is the queue the canvas drop callback writes into

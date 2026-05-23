@@ -1,6 +1,6 @@
 package main
 
-import "indigo/transform"
+import "github.com/matthewjberger/indigo/transform"
 
 // Spinner is the game-side component for "this entity rotates around
 // Axis by Speed radians per second." The game world holds its own

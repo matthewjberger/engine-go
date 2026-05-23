@@ -4,7 +4,7 @@ import (
 	"log"
 	"sort"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // MaxHierarchyDepth is the maximum parent-chain depth the propagation

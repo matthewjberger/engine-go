@@ -1,6 +1,6 @@
 package transform
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // ChainFromRootToLeaf returns the ordered list of entities from
 // root (inclusive) down to leaf (inclusive). leaf must be a

@@ -20,12 +20,12 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/render/pass"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/render/pass"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 func setupLogging() {

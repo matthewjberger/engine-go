@@ -5,7 +5,7 @@ package pass
 import (
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/render"
+	"github.com/matthewjberger/indigo/render"
 )
 
 // dispatchCullPasses runs a single cull compute dispatch per

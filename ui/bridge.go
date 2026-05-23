@@ -1,6 +1,6 @@
 package ui
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // WorldRef is the engine-world resource that points at the UI
 // world. The UI render passes install this on the engine world at

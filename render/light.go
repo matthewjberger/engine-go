@@ -1,6 +1,6 @@
 package render
 
-import "indigo/transform"
+import "github.com/matthewjberger/indigo/transform"
 
 // LightType picks one of the three light shapes from glTF's
 // KHR_lights_punctual extension.

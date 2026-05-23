@@ -8,8 +8,8 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
 )
 
 // ProcessPickingReadback advances any in-flight pick request by one

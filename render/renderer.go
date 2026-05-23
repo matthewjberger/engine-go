@@ -17,7 +17,7 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // DepthFormat is the depth target the renderer creates.

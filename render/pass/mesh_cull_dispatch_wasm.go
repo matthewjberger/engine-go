@@ -2,7 +2,7 @@
 
 package pass
 
-import "indigo/render"
+import "github.com/matthewjberger/indigo/render"
 
 // dispatchCullPasses is a no-op on wasm because the cogentcore wgpu
 // binding doesn't expose DrawIndirect. The draw path falls back to

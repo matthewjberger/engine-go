@@ -1,12 +1,12 @@
 package main
 
 import (
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/transform"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 // pickCycleState tracks the click-to-cycle picking sequence so

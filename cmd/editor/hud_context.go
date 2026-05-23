@@ -8,11 +8,11 @@ package main
 import (
 	"fmt"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/transform"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 // HudContext is the per-frame snapshot of pointers HUD systems

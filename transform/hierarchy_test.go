@@ -3,8 +3,8 @@ package transform_test
 import (
 	"testing"
 
-	"indigo/ecs"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 func TestAssignLocalTransformMarksDirty(t *testing.T) {

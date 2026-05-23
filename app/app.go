@@ -15,8 +15,8 @@
 package app
 
 import (
-	"indigo/ecs"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
 )
 
 // App is a bundle of lifecycle hooks the main loop invokes at

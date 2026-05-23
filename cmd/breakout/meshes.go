@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/render/asset"
+	"github.com/matthewjberger/indigo/render/asset"
 )
 
 // whiteCubeVertices returns a 36-vertex unit cube with every vertex

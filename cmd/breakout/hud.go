@@ -4,10 +4,10 @@ import (
 	"math"
 	"strconv"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 type BreakoutHud struct {

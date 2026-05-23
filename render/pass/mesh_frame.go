@@ -9,11 +9,11 @@ import (
 	"github.com/cogentcore/webgpu/wgpu"
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/transform"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // meshPrepare runs every frame:

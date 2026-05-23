@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // defaultGltf is the .glb the editor auto-loads at startup so the

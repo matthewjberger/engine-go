@@ -6,11 +6,11 @@
 package main
 
 import (
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/pass"
-	"indigo/ui"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/pass"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 func syncUiPointer(worlds app.Worlds) {

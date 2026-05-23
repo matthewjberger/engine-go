@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	"indigo/app"
-	"indigo/ecs"
-	"indigo/render/asset"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/app"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // spawnBlendedSpheres scatters a row of unit cubes with the orb

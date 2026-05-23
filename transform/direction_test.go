@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 const directionEpsilon = 1e-5

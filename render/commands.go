@@ -1,6 +1,6 @@
 package render
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // RenderCommand is the sealed interface for deferred GPU-side work
 // queued during ECS systems and drained by the renderer at frame

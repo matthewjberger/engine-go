@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 func TestFindKeyframeBeforeFirst(t *testing.T) {

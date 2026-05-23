@@ -5,10 +5,10 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 
-	"indigo/ecs"
-	"indigo/transform"
-	"indigo/ui"
-	"indigo/window"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
+	"github.com/matthewjberger/indigo/window"
 )
 
 // PanOrbitController is the data half of an arc-ball / pan-orbit

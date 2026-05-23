@@ -1,10 +1,10 @@
 package pass
 
 import (
-	"indigo/ecs"
-	"indigo/render"
-	"indigo/render/asset"
-	"indigo/transform"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
+	"github.com/matthewjberger/indigo/transform"
 )
 
 // UpdateSkeletonLines emits a 3-axis cross at every joint origin

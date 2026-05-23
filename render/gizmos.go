@@ -1,6 +1,6 @@
 package render
 
-import "indigo/transform"
+import "github.com/matthewjberger/indigo/transform"
 
 // GizmoMode selects which manipulator overlay to draw around the
 // selected entity. None hides the gizmo entirely.

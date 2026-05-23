@@ -8,7 +8,7 @@
 // system does.
 package transform
 
-import "indigo/ecs"
+import "github.com/matthewjberger/indigo/ecs"
 
 // LocalTransform is position, rotation, and scale relative to the
 // parent entity (or world origin if the entity has no Parent).

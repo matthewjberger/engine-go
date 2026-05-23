@@ -1,6 +1,6 @@
 package main
 
-import "indigo/transform"
+import "github.com/matthewjberger/indigo/transform"
 
 // Paddle is the player's paddle: a wide flat box near the bottom of
 // the field. Position is stored game-side; the sync system writes it

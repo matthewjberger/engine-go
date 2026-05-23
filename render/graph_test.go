@@ -3,7 +3,7 @@ package render
 import (
 	"testing"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 func externalColor(name string) ResourceDescriptor {

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"log"
 
-	"indigo/ecs"
-	"indigo/render"
+	"github.com/matthewjberger/indigo/ecs"
+	"github.com/matthewjberger/indigo/render"
 )
 
 // LoadGltfBytes is a render-queue command that decodes a glTF /

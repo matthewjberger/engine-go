@@ -6,7 +6,7 @@ import (
 
 	"github.com/cogentcore/webgpu/wgpu"
 
-	"indigo/ecs"
+	"github.com/matthewjberger/indigo/ecs"
 )
 
 // MaterialRegistry owns the engine-wide GPU buffer of MaterialGPU
