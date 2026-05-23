@@ -200,14 +200,18 @@ func meshPrepare(s any, context *render.PassContext) error {
 		bcenter := entry.Bounds.Center()
 		bradius := entry.Bounds.Radius()
 		params := bucketCullParams{
-			BoundsCenter:  mgl32.Vec3{bcenter[0], bcenter[1], bcenter[2]},
-			BoundsRadius:  bradius,
-			ObjectCount:   uint32(len(bucket.slotEntity)),
+			BoundsCenter: mgl32.Vec3{bcenter[0], bcenter[1], bcenter[2]},
+			BoundsRadius: bradius,
+			ObjectCount:  uint32(len(bucket.slotEntity)),
+		}
+		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.cullParamsBuffer, 0, bytesOf(&params))
+		indirectTemplate := drawIndirectCommand{
 			VertexCount:   entry.VertexCount,
+			InstanceCount: 0,
 			FirstVertex:   0,
 			FirstInstance: 0,
 		}
-		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.cullParamsBuffer, 0, bytesOf(&params))
+		writeBuffer(context.Device, context.Queue, context.Encoder, bucket.indirectBuffer, 0, bytesOf(&indirectTemplate))
 		// Always-identity visible_indices so the wasm draw path
 		// (which doesn't support DrawIndirect and draws every
 		// slot) reads valid indices. The cull compute overwrites

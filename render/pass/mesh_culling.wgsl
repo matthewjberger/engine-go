@@ -14,9 +14,9 @@ struct BucketParams {
     bounds_center: vec3<f32>,
     bounds_radius: f32,
     object_count:  u32,
-    vertex_count:  u32,
-    first_vertex:  u32,
-    first_instance: u32,
+    _pad0:         u32,
+    _pad1:         u32,
+    _pad2:         u32,
 };
 
 struct DrawIndirect {
@@ -49,17 +49,6 @@ fn matrix_max_scale(m: mat4x4<f32>) -> f32 {
     let sy = length(vec3<f32>(m[1].x, m[1].y, m[1].z));
     let sz = length(vec3<f32>(m[2].x, m[2].y, m[2].z));
     return max(sx, max(sy, sz));
-}
-
-@compute @workgroup_size(64)
-fn reset(@builtin(global_invocation_id) gid: vec3<u32>) {
-    if (gid.x != 0u) {
-        return;
-    }
-    indirect_command.vertex_count = params.vertex_count;
-    atomicStore(&indirect_command.instance_count, 0u);
-    indirect_command.first_vertex = params.first_vertex;
-    indirect_command.first_instance = params.first_instance;
 }
 
 @compute @workgroup_size(64)

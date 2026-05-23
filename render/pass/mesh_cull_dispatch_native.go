@@ -8,31 +8,19 @@ import (
 	"indigo/render"
 )
 
-// dispatchCullPasses runs the reset + cull compute dispatches that
-// build each bucket's indirect command buffer and write the K
-// surviving slot indices into visible_indices. The native draw path
-// reads back instance_count from indirect_buffer via DrawIndirect,
-// so reading only the leading K visible_indices entries is correct.
+// dispatchCullPasses runs a single cull compute dispatch per
+// bucket. meshPrepare CPU-writes each bucket's DrawIndirect
+// template (instance_count=0) into indirect_buffer right before
+// this; the cull shader then atomicAdd's into instance_count and
+// appends surviving slot ids into visible_indices. Native DrawIndirect
+// reads the resulting instance_count, so the leading K visible_indices
+// entries are exactly what gets drawn.
 //
 // The wasm build skips this entirely; see mesh_cull_dispatch_wasm.go.
 func dispatchCullPasses(state *meshPassState, context *render.PassContext) {
 	if len(state.sortedHandles) == 0 {
 		return
 	}
-
-	resetPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
-	resetPass.SetBindGroup(0, state.meshCulling.frameBindGroup, nil)
-	resetPass.SetPipeline(state.meshCulling.resetPipeline)
-	for _, handle := range state.sortedHandles {
-		bucket := state.perHandle[handle]
-		if bucket.cullBindGroup == nil {
-			continue
-		}
-		resetPass.SetBindGroup(1, bucket.cullBindGroup, nil)
-		resetPass.DispatchWorkgroups(1, 1, 1)
-	}
-	resetPass.End()
-	resetPass.Release()
 
 	cullPass := context.Encoder.BeginComputePass(&wgpu.ComputePassDescriptor{})
 	cullPass.SetBindGroup(0, state.meshCulling.frameBindGroup, nil)

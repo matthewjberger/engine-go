@@ -29,21 +29,20 @@ type CullingUniforms struct {
 }
 
 // bucketCullParams is the per-bucket uniform the cull shader
-// reads: the mesh's local-space bounding sphere, the instance
-// count to dispatch over, and the DrawIndirect template values
-// the reset pass copies into the indirect buffer.
+// reads: the mesh's local-space bounding sphere and the instance
+// count to dispatch over. Three trailing u32 pads keep the WGSL
+// uniform 16-byte aligned.
 type bucketCullParams struct {
-	BoundsCenter  mgl32.Vec3
-	BoundsRadius  float32
-	ObjectCount   uint32
-	VertexCount   uint32
-	FirstVertex   uint32
-	FirstInstance uint32
+	BoundsCenter mgl32.Vec3
+	BoundsRadius float32
+	ObjectCount  uint32
+	Pad0         uint32
+	Pad1         uint32
+	Pad2         uint32
 }
 
 type meshCullingPipeline struct {
 	cullPipeline   *wgpu.ComputePipeline
-	resetPipeline  *wgpu.ComputePipeline
 	frameLayout    *wgpu.BindGroupLayout
 	bucketLayout   *wgpu.BindGroupLayout
 	frameBuffer    *wgpu.Buffer
@@ -112,20 +111,6 @@ func newMeshCullingPipeline(device *wgpu.Device) (*meshCullingPipeline, error) {
 		return nil, fmt.Errorf("mesh_culling: cull pipeline: %w", err)
 	}
 
-	resetPipeline, err := device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
-		Layout: pipelineLayout,
-		Compute: wgpu.ProgrammableStageDescriptor{
-			Module:     shader,
-			EntryPoint: "reset",
-		},
-	})
-	if err != nil {
-		cullPipeline.Release()
-		frameLayout.Release()
-		bucketLayout.Release()
-		return nil, fmt.Errorf("mesh_culling: reset pipeline: %w", err)
-	}
-
 	frameBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "mesh_culling frame uniform",
 		Size:  uint64(unsafe.Sizeof(CullingUniforms{})),
@@ -133,7 +118,6 @@ func newMeshCullingPipeline(device *wgpu.Device) (*meshCullingPipeline, error) {
 	})
 	if err != nil {
 		cullPipeline.Release()
-		resetPipeline.Release()
 		frameLayout.Release()
 		bucketLayout.Release()
 		return nil, fmt.Errorf("mesh_culling: frame buffer: %w", err)
@@ -147,7 +131,6 @@ func newMeshCullingPipeline(device *wgpu.Device) (*meshCullingPipeline, error) {
 	if err != nil {
 		frameBuffer.Release()
 		cullPipeline.Release()
-		resetPipeline.Release()
 		frameLayout.Release()
 		bucketLayout.Release()
 		return nil, fmt.Errorf("mesh_culling: frame bg: %w", err)
@@ -155,7 +138,6 @@ func newMeshCullingPipeline(device *wgpu.Device) (*meshCullingPipeline, error) {
 
 	return &meshCullingPipeline{
 		cullPipeline:   cullPipeline,
-		resetPipeline:  resetPipeline,
 		frameLayout:    frameLayout,
 		bucketLayout:   bucketLayout,
 		frameBuffer:    frameBuffer,
@@ -172,9 +154,6 @@ func (p *meshCullingPipeline) release() {
 	}
 	if p.cullPipeline != nil {
 		p.cullPipeline.Release()
-	}
-	if p.resetPipeline != nil {
-		p.resetPipeline.Release()
 	}
 	if p.frameLayout != nil {
 		p.frameLayout.Release()
