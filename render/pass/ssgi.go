@@ -109,12 +109,13 @@ func AddSsgiPass(renderer *render.Renderer, aspect func() float32) (*render.Pass
 		return nil, nil, err
 	}
 	pass := &render.Pass{
-		Name:    "ssgi",
-		Reads:   []string{"depth", "view_normals", "scene_color"},
-		State:   state,
-		Prepare: ssgiPrepare,
-		Execute: ssgiExecute,
-		Release: ssgiRelease,
+		Name:                 "ssgi",
+		Reads:                []string{"depth", "view_normals", "scene_color"},
+		State:                state,
+		Prepare:              ssgiPrepare,
+		Execute:              ssgiExecute,
+		InvalidateBindGroups: ssgiInvalidate,
+		Release:              ssgiRelease,
 	}
 	if err := renderer.Graph.AddPass(pass, []render.SlotBinding{
 		{Slot: "depth", ResourceID: renderer.DepthID},
@@ -129,12 +130,13 @@ func AddSsgiPass(renderer *render.Renderer, aspect func() float32) (*render.Pass
 		return nil, nil, err
 	}
 	blurPass := &render.Pass{
-		Name:    "ssgi_blur",
-		Reads:   []string{"depth", "view_normals"},
-		State:   blurState,
-		Prepare: ssgiBlurPrepare,
-		Execute: ssgiBlurExecute,
-		Release: ssgiBlurRelease,
+		Name:                 "ssgi_blur",
+		Reads:                []string{"depth", "view_normals"},
+		State:                blurState,
+		Prepare:              ssgiBlurPrepare,
+		Execute:              ssgiBlurExecute,
+		InvalidateBindGroups: ssgiBlurInvalidate,
+		Release:              ssgiBlurRelease,
 	}
 	if err := renderer.Graph.AddPass(blurPass, []render.SlotBinding{
 		{Slot: "depth", ResourceID: renderer.DepthID},
@@ -403,6 +405,22 @@ func ssgiExecute(s any, context *render.PassContext) error {
 	passEnc.End()
 	passEnc.Release()
 	return nil
+}
+
+func ssgiInvalidate(s any) {
+	state := s.(*ssgiPassState)
+	if state.bindGroup != nil {
+		state.bindGroup.Release()
+		state.bindGroup = nil
+	}
+}
+
+func ssgiBlurInvalidate(s any) {
+	state := s.(*ssgiBlurPassState)
+	if state.bindGroup != nil {
+		state.bindGroup.Release()
+		state.bindGroup = nil
+	}
 }
 
 func ssgiRelease(s any) {

@@ -190,6 +190,14 @@ func ssaoBlurExecute(s any, context *render.PassContext) error {
 	return nil
 }
 
+func ssaoBlurInvalidate(s any) {
+	state := s.(*ssaoBlurPassState)
+	if state.bindGroup != nil {
+		state.bindGroup.Release()
+		state.bindGroup = nil
+	}
+}
+
 func ssaoBlurRelease(s any) {
 	state := s.(*ssaoBlurPassState)
 	if state.bindGroup != nil {

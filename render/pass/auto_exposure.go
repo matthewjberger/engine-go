@@ -75,12 +75,13 @@ func AddAutoExposurePass(renderer *render.Renderer) (*render.Pass, error) {
 		return nil, err
 	}
 	pass := &render.Pass{
-		Name:    "auto_exposure",
-		Reads:   []string{"scene_color"},
-		State:   state,
-		Prepare: autoExposurePrepare,
-		Execute: autoExposureExecute,
-		Release: autoExposureRelease,
+		Name:                 "auto_exposure",
+		Reads:                []string{"scene_color"},
+		State:                state,
+		Prepare:              autoExposurePrepare,
+		Execute:              autoExposureExecute,
+		InvalidateBindGroups: autoExposureInvalidate,
+		Release:              autoExposureRelease,
 	}
 	if err := renderer.Graph.AddPass(pass, []render.SlotBinding{
 		{Slot: "scene_color", ResourceID: renderer.SceneColorID},
@@ -207,6 +208,15 @@ func autoExposureExecute(s any, context *render.PassContext) error {
 	passEnc.End()
 	passEnc.Release()
 	return nil
+}
+
+func autoExposureInvalidate(s any) {
+	state := s.(*autoExposurePassState)
+	if state.bg != nil {
+		state.bg.Release()
+		state.bg = nil
+	}
+	state.lastView = nil
 }
 
 func autoExposureRelease(s any) {

@@ -107,12 +107,13 @@ func AddSsaoPass(renderer *render.Renderer, aspect func() float32) (*render.Pass
 	}
 
 	pass := &render.Pass{
-		Name:    "ssao",
-		Reads:   []string{"depth", "view_normals"},
-		State:   state,
-		Prepare: ssaoPrepare,
-		Execute: ssaoExecute,
-		Release: ssaoRelease,
+		Name:                 "ssao",
+		Reads:                []string{"depth", "view_normals"},
+		State:                state,
+		Prepare:              ssaoPrepare,
+		Execute:              ssaoExecute,
+		InvalidateBindGroups: ssaoInvalidate,
+		Release:              ssaoRelease,
 	}
 	if err := renderer.Graph.AddPass(pass, []render.SlotBinding{
 		{Slot: "depth", ResourceID: renderer.DepthID},
@@ -126,12 +127,13 @@ func AddSsaoPass(renderer *render.Renderer, aspect func() float32) (*render.Pass
 		return nil, nil, err
 	}
 	blurPass := &render.Pass{
-		Name:    "ssao_blur",
-		Reads:   []string{"depth", "view_normals"},
-		State:   blurState,
-		Prepare: ssaoBlurPrepare,
-		Execute: ssaoBlurExecute,
-		Release: ssaoBlurRelease,
+		Name:                 "ssao_blur",
+		Reads:                []string{"depth", "view_normals"},
+		State:                blurState,
+		Prepare:              ssaoBlurPrepare,
+		Execute:              ssaoBlurExecute,
+		InvalidateBindGroups: ssaoBlurInvalidate,
+		Release:              ssaoBlurRelease,
 	}
 	if err := renderer.Graph.AddPass(blurPass, []render.SlotBinding{
 		{Slot: "depth", ResourceID: renderer.DepthID},
@@ -374,6 +376,14 @@ func ssaoExecute(s any, context *render.PassContext) error {
 	passEnc.End()
 	passEnc.Release()
 	return nil
+}
+
+func ssaoInvalidate(s any) {
+	state := s.(*ssaoPassState)
+	if state.bindGroup != nil {
+		state.bindGroup.Release()
+		state.bindGroup = nil
+	}
 }
 
 func ssaoRelease(s any) {

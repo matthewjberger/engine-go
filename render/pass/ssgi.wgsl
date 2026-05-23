@@ -132,5 +132,5 @@ fn fragment_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
     indirect_color = indirect_color / f32(KERNEL_SIZE);
-    return vec4<f32>(indirect_color * params.intensity, 1.0);
+    return vec4<f32>(indirect_color, 1.0);
 }
