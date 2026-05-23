@@ -8,5 +8,4 @@ import "github.com/matthewjberger/indigo/ecs"
 // invisible proxy mesh stamped at their position.
 type PickProxy struct {
 	Target ecs.Entity
-	Mesh   uint32
 }
