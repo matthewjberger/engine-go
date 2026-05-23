@@ -59,6 +59,11 @@ type SkinningCompute struct {
 	staticUploaded      bool
 
 	boneScratch []mgl32.Mat4
+	// lastBones holds the previous frame's collected bone matrices.
+	// When this frame's match bit-for-bit (and nothing reallocated),
+	// the bone upload + skinning dispatch are skipped: last frame's
+	// joint matrices remain valid for idle skeletons.
+	lastBones []mgl32.Mat4
 
 	// generation bumps whenever jointBuffer is reallocated, so the
 	// render passes that cache a bind group referencing it can
@@ -364,9 +369,6 @@ func (sc *SkinningCompute) Prepare(world *ecs.World, device *wgpu.Device, queue 
 			writeBuffer(device, queue, encoder, sc.ibmBuffer, 0, matrixSliceBytes(sc.inverseBindMatrices))
 		}
 	}
-	if len(sc.boneScratch) > 0 {
-		writeBuffer(device, queue, encoder, sc.boneBuffer, 0, matrixSliceBytes(sc.boneScratch))
-	}
 	if grew && sc.bindGroup != nil {
 		sc.bindGroup.Release()
 		sc.bindGroup = nil
@@ -386,6 +388,30 @@ func (sc *SkinningCompute) Prepare(world *ecs.World, device *wgpu.Device, queue 
 			return false
 		}
 		sc.bindGroup = bg
+	}
+
+	// Skip the bone upload + dispatch when the pose is unchanged
+	// since last frame; the joint-matrix buffer still holds valid
+	// results. A realloc or static rebuild forces a refresh.
+	if !rebuilt && !grew && bonesEqual(sc.boneScratch, sc.lastBones) {
+		return false
+	}
+	if len(sc.boneScratch) > 0 {
+		writeBuffer(device, queue, encoder, sc.boneBuffer, 0, matrixSliceBytes(sc.boneScratch))
+	}
+	sc.lastBones = append(sc.lastBones[:0], sc.boneScratch...)
+	return true
+}
+
+// bonesEqual reports whether two bone-matrix slices are identical.
+func bonesEqual(a, b []mgl32.Mat4) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
 	}
 	return true
 }
