@@ -11,6 +11,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"io/fs"
 	"math"
 	"net/url"
 	"os"
@@ -133,6 +134,10 @@ func LoadGltfFile(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, sk
 type LoadGltfOptions struct {
 	Label   string
 	BaseDir string
+	// FS resolves external buffers and images. When nil it defaults to
+	// os.DirFS(BaseDir), so callers can supply an embed.FS or fstest.MapFS
+	// instead of the host filesystem.
+	FS fs.FS
 }
 
 func LoadGltfReader(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAssets, skinnedAssets *SkinnedMeshAssets, arrays *MaterialTextureArrays, label string, r io.Reader) (*LoadedScene, error) {
@@ -145,9 +150,13 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 	if err != nil {
 		return nil, fmt.Errorf("gltf %q: read: %w", label, err)
 	}
+	fsys := opts.FS
+	if fsys == nil && opts.BaseDir != "" {
+		fsys = os.DirFS(opts.BaseDir)
+	}
 	var dec *gltf.Decoder
-	if opts.BaseDir != "" {
-		dec = gltf.NewDecoderFS(bytes.NewReader(data), os.DirFS(opts.BaseDir))
+	if fsys != nil {
+		dec = gltf.NewDecoderFS(bytes.NewReader(data), fsys)
 	} else {
 		dec = gltf.NewDecoder(bytes.NewReader(data))
 	}
@@ -159,7 +168,7 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 	scene := &LoadedScene{Label: label}
 
 	textureColorSpace := classifyTextures(doc)
-	textureLayers, err := uploadTextures(queue, arrays, label, doc, textureColorSpace, opts.BaseDir)
+	textureLayers, err := uploadTextures(queue, arrays, label, doc, textureColorSpace, fsys)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +780,7 @@ func classifyTextures(doc *gltf.Document) []TextureColorSpace {
 	return spaces
 }
 
-func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label string, doc *gltf.Document, spaces []TextureColorSpace, baseDir string) ([]uint32, error) {
+func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label string, doc *gltf.Document, spaces []TextureColorSpace, fsys fs.FS) ([]uint32, error) {
 	out := make([]uint32, len(doc.Textures))
 	for i := range out {
 		out[i] = NoTextureLayer
@@ -781,7 +790,7 @@ func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label stri
 			continue
 		}
 		img := doc.Images[*tex.Source]
-		pixels, w, h, err := decodeGltfImage(doc, img, baseDir)
+		pixels, w, h, err := decodeGltfImage(doc, img, fsys)
 		if err != nil {
 			return nil, fmt.Errorf("gltf %q: image %d: %w", label, i, err)
 		}
@@ -1313,8 +1322,8 @@ func accessorVec4(doc *gltf.Document, acc *gltf.Accessor, out [][4]float32) erro
 	return nil
 }
 
-func decodeGltfImage(doc *gltf.Document, img *gltf.Image, baseDir string) ([]byte, uint32, uint32, error) {
-	raw, err := imageBytes(doc, img, baseDir)
+func decodeGltfImage(doc *gltf.Document, img *gltf.Image, fsys fs.FS) ([]byte, uint32, uint32, error) {
+	raw, err := imageBytes(doc, img, fsys)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -1340,7 +1349,7 @@ func decodeGltfImage(doc *gltf.Document, img *gltf.Image, baseDir string) ([]byt
 	return pixels, w, h, nil
 }
 
-func imageBytes(doc *gltf.Document, img *gltf.Image, baseDir string) ([]byte, error) {
+func imageBytes(doc *gltf.Document, img *gltf.Image, fsys fs.FS) ([]byte, error) {
 	if img.BufferView != nil {
 		view := doc.BufferViews[*img.BufferView]
 		buf := doc.Buffers[view.Buffer]
@@ -1355,17 +1364,16 @@ func imageBytes(doc *gltf.Document, img *gltf.Image, baseDir string) ([]byte, er
 		if strings.HasPrefix(img.URI, "data:") {
 			return decodeDataURI(img.URI)
 		}
-		if baseDir == "" {
-			return nil, fmt.Errorf("external image %q has no base dir to resolve against", img.URI)
+		if fsys == nil {
+			return nil, fmt.Errorf("external image %q has no filesystem to resolve against", img.URI)
 		}
 		unescaped, err := url.QueryUnescape(img.URI)
 		if err != nil {
 			return nil, fmt.Errorf("unescape image URI %q: %w", img.URI, err)
 		}
-		path := filepath.Join(baseDir, unescaped)
-		raw, err := os.ReadFile(path)
+		raw, err := fs.ReadFile(fsys, unescaped)
 		if err != nil {
-			return nil, fmt.Errorf("read image %q: %w", path, err)
+			return nil, fmt.Errorf("read image %q: %w", unescaped, err)
 		}
 		return raw, nil
 	}
