@@ -1,3 +1,16 @@
+// Pass constructor convention. Two-layer API:
+//
+//   - NewXPass(device, ...): builds the pass instance, allocates
+//     its GPU resources, returns *render.Pass. Useful for tests
+//     and custom render graphs that wire passes manually.
+//
+//   - AddXPass(renderer, ...): wraps NewXPass and registers the
+//     result with the renderer's graph. The convenience for
+//     normal app setup — apps in cmd/* call only Add*Pass.
+//
+// New constructors should follow this pair where useful; passes
+// that are only meaningful when graph-registered (cull compute,
+// skinning compute) may expose only Add*Pass.
 package pass
 
 import (
