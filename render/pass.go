@@ -36,7 +36,7 @@ func (c *PassContext) Slot(slot string) (ResourceID, bool) {
 func (c *PassContext) Resource(slot string) (*TextureHandle, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
-		return nil, fmt.Errorf("render: pass slot %q not bound", slot)
+		return nil, fmt.Errorf("render: pass slot %q: %w", slot, ErrSlotNotBound)
 	}
 	return c.Resources.Handle(id), nil
 }
@@ -47,7 +47,7 @@ func (c *PassContext) TextureView(slot string) (*wgpu.TextureView, error) {
 		return nil, err
 	}
 	if handle.View == nil {
-		return nil, fmt.Errorf("render: slot %q has no view", slot)
+		return nil, fmt.Errorf("render: slot %q: %w", slot, ErrSlotNoView)
 	}
 	return handle.View, nil
 }
@@ -55,12 +55,12 @@ func (c *PassContext) TextureView(slot string) (*wgpu.TextureView, error) {
 func (c *PassContext) ColorAttachment(slot string) (wgpu.RenderPassColorAttachment, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
-		return wgpu.RenderPassColorAttachment{}, fmt.Errorf("render: pass slot %q not bound", slot)
+		return wgpu.RenderPassColorAttachment{}, fmt.Errorf("render: pass slot %q: %w", slot, ErrSlotNotBound)
 	}
 	handle := c.Resources.Handle(id)
 	descriptor := c.Resources.Descriptor(id)
 	if handle.View == nil {
-		return wgpu.RenderPassColorAttachment{}, fmt.Errorf("render: color slot %q (%s) has no view", slot, descriptor.Name)
+		return wgpu.RenderPassColorAttachment{}, fmt.Errorf("render: color slot %q (%s): %w", slot, descriptor.Name, ErrSlotNoView)
 	}
 
 	loadOp := wgpu.LoadOpLoad
@@ -81,12 +81,12 @@ func (c *PassContext) ColorAttachment(slot string) (wgpu.RenderPassColorAttachme
 func (c *PassContext) DepthAttachment(slot string) (wgpu.RenderPassDepthStencilAttachment, error) {
 	id, ok := c.Slots[slot]
 	if !ok {
-		return wgpu.RenderPassDepthStencilAttachment{}, fmt.Errorf("render: pass slot %q not bound", slot)
+		return wgpu.RenderPassDepthStencilAttachment{}, fmt.Errorf("render: pass slot %q: %w", slot, ErrSlotNotBound)
 	}
 	handle := c.Resources.Handle(id)
 	descriptor := c.Resources.Descriptor(id)
 	if handle.View == nil {
-		return wgpu.RenderPassDepthStencilAttachment{}, fmt.Errorf("render: depth slot %q (%s) has no view", slot, descriptor.Name)
+		return wgpu.RenderPassDepthStencilAttachment{}, fmt.Errorf("render: depth slot %q (%s): %w", slot, descriptor.Name, ErrSlotNoView)
 	}
 
 	loadOp := wgpu.LoadOpLoad

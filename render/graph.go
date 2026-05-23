@@ -171,7 +171,7 @@ func (g *Graph) topoSort() ([]int, error) {
 		}
 	}
 	if len(order) != n {
-		return nil, fmt.Errorf("render: cycle in render graph dependencies")
+		return nil, ErrGraphCycle
 	}
 	return order, nil
 }
@@ -247,7 +247,7 @@ func (g *Graph) ResizeTransients(device *wgpu.Device, width, height uint32) erro
 
 func (g *Graph) Execute(device *wgpu.Device, queue *wgpu.Queue, world *ecs.World, encoder *wgpu.CommandEncoder) error {
 	if !g.compiled {
-		return fmt.Errorf("render: graph not compiled")
+		return ErrGraphNotCompiled
 	}
 	for _, passIndex := range g.executionOrder {
 		entry := &g.passes[passIndex]
