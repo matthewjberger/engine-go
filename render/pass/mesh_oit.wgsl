@@ -121,6 +121,13 @@ fn oit_weight(view_z: f32, a: f32) -> f32 {
 
 @fragment
 fn fragment_main(in: VertexOutput) -> OitOutput {
+    // Derivatives must be evaluated under uniform control flow,
+    // before any non-uniform discard or material branch. Pass
+    // them explicitly to textureSampleGrad so the sampler call
+    // itself is allowed inside the per-material branch below.
+    let ddx_uv = dpdx(in.uv);
+    let ddy_uv = dpdy(in.uv);
+
     let mat = materials[in.material_index];
     // Skip non-blend materials so the OIT pass only contributes
     // genuine transparency. The opaque mesh pass renders them.
@@ -131,7 +138,7 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     var base_color = mat.base_color * in.color;
     if (mat.base_layer != NO_TEXTURE_LAYER) {
         let layer = i32(mat.base_layer & 0xFFFFu);
-        base_color = base_color * textureSample(material_srgb_array, material_sampler, in.uv, layer);
+        base_color = base_color * textureSampleGrad(material_srgb_array, material_sampler, in.uv, layer, ddx_uv, ddy_uv);
     }
 
     var albedo = base_color.rgb;

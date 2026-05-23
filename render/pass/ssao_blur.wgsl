@@ -32,7 +32,9 @@ fn fragment_main(in: VertexOutput) -> @location(0) f32 {
     let texel_size = 1.0 / params.screen_size;
 
     let center_ao = textureSampleLevel(ssao_texture, ssao_sampler, in.uv, 0.0).r;
-    let center_depth = textureSampleLevel(depth_texture, depth_sampler, in.uv, 0.0);
+    let depth_dims = vec2<f32>(textureDimensions(depth_texture));
+    let center_coords = vec2<i32>(clamp(in.uv * depth_dims, vec2<f32>(0.0), depth_dims - vec2<f32>(1.0)));
+    let center_depth = textureLoad(depth_texture, center_coords, 0);
     let center_normal_raw = textureSampleLevel(normal_texture, normal_sampler, in.uv, 0.0).xyz;
     let center_normal_len = length(center_normal_raw);
     if (center_normal_len < 0.001) {
@@ -50,7 +52,8 @@ fn fragment_main(in: VertexOutput) -> @location(0) f32 {
             let offset = vec2<f32>(f32(dx), f32(dy)) * texel_size;
             let sample_uv = in.uv + offset;
             let sample_ao = textureSampleLevel(ssao_texture, ssao_sampler, sample_uv, 0.0).r;
-            let sample_depth = textureSampleLevel(depth_texture, depth_sampler, sample_uv, 0.0);
+            let sample_coords = vec2<i32>(clamp(sample_uv * depth_dims, vec2<f32>(0.0), depth_dims - vec2<f32>(1.0)));
+            let sample_depth = textureLoad(depth_texture, sample_coords, 0);
             let sample_normal_raw = textureSampleLevel(normal_texture, normal_sampler, sample_uv, 0.0).xyz;
             let sample_normal_len = length(sample_normal_raw);
 

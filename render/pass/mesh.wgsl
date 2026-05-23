@@ -379,11 +379,13 @@ fn sample_cascade(world_pos: vec3<f32>, world_normal: vec3<f32>, cascade: i32) -
     // its own blocker and inflate the penumbra.
     let search_bias = 0.001;
     let search_radius = 4.0 * texel * light_size;
+    let dims_cascade = vec2<f32>(textureDimensions(shadow_map));
     var blocker_sum = 0.0;
     var blocker_count = 0.0;
     for (var index: i32 = 0; index < 8; index = index + 1) {
         let offset = POISSON_8[index] * search_radius;
-        let sampled = textureSampleLevel(shadow_map, shadow_raw_sampler, shadow_uv + offset, cascade, 0.0);
+        let texel_coords = vec2<i32>(clamp((shadow_uv + offset) * dims_cascade, vec2<f32>(0.0), dims_cascade - vec2<f32>(1.0)));
+        let sampled = textureLoad(shadow_map, texel_coords, cascade, 0);
         if (sampled < depth - search_bias) {
             blocker_sum = blocker_sum + sampled;
             blocker_count = blocker_count + 1.0;
@@ -507,11 +509,13 @@ fn sample_spot_shadow(world_pos: vec3<f32>, world_normal: vec3<f32>, shadow_inde
     let light_size = max(entry.light_size, 0.001);
     let search_bias = 0.001;
     let search_radius = 4.0 * texel * entry.atlas_scale.x * light_size;
+    let dims_spot = vec2<f32>(textureDimensions(spot_shadow_atlas));
     var blocker_sum = 0.0;
     var blocker_count = 0.0;
     for (var index: i32 = 0; index < 8; index = index + 1) {
         let offset = POISSON_8[index] * search_radius;
-        let sampled = textureSampleLevel(spot_shadow_atlas, shadow_raw_sampler, atlas_uv + offset, 0.0);
+        let texel_coords = vec2<i32>(clamp((atlas_uv + offset) * dims_spot, vec2<f32>(0.0), dims_spot - vec2<f32>(1.0)));
+        let sampled = textureLoad(spot_shadow_atlas, texel_coords, 0);
         if (sampled < depth - search_bias) {
             blocker_sum = blocker_sum + sampled;
             blocker_count = blocker_count + 1.0;
@@ -730,7 +734,7 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
 
     if (mat.unlit != 0u) {
         var out_unlit: FragmentOutput;
-        out_unlit.color = vec4<f32>(albedo + emissive, base_color.a);
+        out_unlit.color = vec4<f32>(albedo + emissive, 1.0);
         out_unlit.entity_id = in.entity_id;
         out_unlit.view_normal = vec4<f32>(normalize(in.view_normal), 1.0);
         return out_unlit;
@@ -813,7 +817,13 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     let color = ambient + lo + emissive;
 
     var output: FragmentOutput;
-    output.color = vec4<f32>(color, base_color.a);
+    // Opaque + Mask paths force alpha to 1 so scene_color stays
+    // fully opaque regardless of the material's base color alpha
+    // channel (which AlphaModeOpaque is supposed to ignore per
+    // the glTF spec). Blend materials are discarded earlier and
+    // re-routed through the OIT pass, so this branch never sees
+    // alpha < 1 cases that should preserve the source alpha.
+    output.color = vec4<f32>(color, 1.0);
     output.entity_id = in.entity_id;
     output.view_normal = vec4<f32>(normalize(in.view_normal), 1.0);
     return output;

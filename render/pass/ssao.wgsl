@@ -49,7 +49,9 @@ fn fragment_main(in: VertexOutput) -> @location(0) f32 {
     if (params.enabled < 0.5) {
         return 1.0;
     }
-    let depth = textureSampleLevel(depth_texture, point_sampler, in.uv, 0.0);
+    let depth_dims = vec2<f32>(textureDimensions(depth_texture));
+    let depth_coords = vec2<i32>(clamp(in.uv * depth_dims, vec2<f32>(0.0), depth_dims - vec2<f32>(1.0)));
+    let depth = textureLoad(depth_texture, depth_coords, 0);
     if (depth >= 1.0) {
         return 1.0;
     }
@@ -99,7 +101,8 @@ fn fragment_main(in: VertexOutput) -> @location(0) f32 {
         if (sample_uv.x < 0.0 || sample_uv.x > 1.0 || sample_uv.y < 0.0 || sample_uv.y > 1.0) {
             continue;
         }
-        let sample_depth = textureSampleLevel(depth_texture, point_sampler, sample_uv, 0.0);
+        let sample_coords = vec2<i32>(clamp(sample_uv * depth_dims, vec2<f32>(0.0), depth_dims - vec2<f32>(1.0)));
+        let sample_depth = textureLoad(depth_texture, sample_coords, 0);
         if (sample_depth >= 1.0) {
             continue;
         }
