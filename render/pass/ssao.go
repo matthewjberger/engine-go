@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"math"
-	"math/rand"
 	"unsafe"
 
 	"github.com/cogentcore/webgpu/wgpu"
@@ -253,7 +252,7 @@ func newSsaoState(device *wgpu.Device, aspect func() float32) (*ssaoPassState, e
 		MipLevelCount: 1,
 		SampleCount:   1,
 		Dimension:     wgpu.TextureDimension2D,
-		Format:        wgpu.TextureFormatRGBA16Float,
+		Format:        wgpu.TextureFormatRGBA8Unorm,
 		Usage:         wgpu.TextureUsageTextureBinding | wgpu.TextureUsageCopyDst,
 	})
 	if err != nil {
@@ -265,8 +264,8 @@ func newSsaoState(device *wgpu.Device, aspect func() float32) (*ssaoPassState, e
 	}
 	device.GetQueue().WriteTexture(
 		&wgpu.ImageCopyTexture{Texture: noiseTex, Aspect: wgpu.TextureAspectAll},
-		unsafe.Slice((*byte)(unsafe.Pointer(&noise[0])), len(noise)*2),
-		&wgpu.TextureDataLayout{BytesPerRow: ssaoNoiseSize * 8, RowsPerImage: ssaoNoiseSize},
+		noise,
+		&wgpu.TextureDataLayout{BytesPerRow: ssaoNoiseSize * 4, RowsPerImage: ssaoNoiseSize},
 		&wgpu.Extent3D{Width: ssaoNoiseSize, Height: ssaoNoiseSize, DepthOrArrayLayers: 1},
 	)
 
@@ -462,72 +461,47 @@ func ssaoViewProj(context *render.PassContext, aspect float32) (mgl32.Mat4, mgl3
 	return view, proj
 }
 
-// buildSsaoKernel returns a hemisphere-distributed set of unit-ish
-// vectors weighted toward the surface plane, matching the reference
-// engine's SSAO kernel.
+// nightshadeLCG is the linear congruential generator the reference
+// engine uses for its SSAO + SSGI kernel and noise. Reproducing the
+// exact sequence here gives bit-identical sampling patterns and the
+// same temporal stability characteristics.
+type nightshadeLCG uint32
+
+func (r *nightshadeLCG) nextFloat() float32 {
+	*r = nightshadeLCG((uint32(*r) * 1103515245) + 12345)
+	return float32(*r) / float32(math.MaxUint32)
+}
+
+// buildSsaoKernel mirrors the reference engine's SSAO kernel
+// generator: 64 hemisphere-aligned unit vectors, each scaled by an
+// index-weighted falloff so most samples cluster near the surface.
 func buildSsaoKernel() []mgl32.Vec4 {
-	rng := rand.New(rand.NewSource(1))
+	rng := nightshadeLCG(12345)
 	kernel := make([]mgl32.Vec4, ssaoKernelSize)
 	for index := 0; index < ssaoKernelSize; index++ {
-		sample := mgl32.Vec3{
-			float32(rng.Float64()*2 - 1),
-			float32(rng.Float64()*2 - 1),
-			float32(rng.Float64()),
-		}.Normalize()
-		scale := float32(index) / float32(ssaoKernelSize)
-		scale = lerpFloat(0.1, 1.0, scale*scale)
-		sample = sample.Mul(float32(rng.Float64()) * scale)
+		x := rng.nextFloat()*2 - 1
+		y := rng.nextFloat()*2 - 1
+		z := rng.nextFloat()*0.9 + 0.1
+		sample := mgl32.Vec3{x, y, z}.Normalize()
+		t := float32(index) / float32(ssaoKernelSize)
+		scale := 0.1 + t*t*0.9
+		sample = sample.Mul(scale)
 		kernel[index] = mgl32.Vec4{sample.X(), sample.Y(), sample.Z(), 0}
 	}
 	return kernel
 }
 
-func lerpFloat(a, b, t float32) float32 {
-	return a + (b-a)*t
-}
-
-// buildSsaoNoise returns a 4x4 random-rotation noise pattern, packed
-// as Rgba16Float values that the shader expands to (-1, 1) in xy.
-func buildSsaoNoise() []uint16 {
-	rng := rand.New(rand.NewSource(2))
-	noise := make([]uint16, ssaoNoiseSize*ssaoNoiseSize*4)
+// buildSsaoNoise returns the reference engine's 4x4 SSAO rotation
+// noise: per-texel RG holds a random vector in [-1, 1] packed to
+// [0, 255]; B is the midpoint (128) and A is opaque (255). Format
+// is Rgba8Unorm to match.
+func buildSsaoNoise() []byte {
+	rng := nightshadeLCG(54321)
+	noise := make([]byte, 0, ssaoNoiseSize*ssaoNoiseSize*4)
 	for index := 0; index < ssaoNoiseSize*ssaoNoiseSize; index++ {
-		x := float32(rng.Float64()*2 - 1)
-		y := float32(rng.Float64()*2 - 1)
-		noise[index*4+0] = float16FromFloat32(x*0.5 + 0.5)
-		noise[index*4+1] = float16FromFloat32(y*0.5 + 0.5)
-		noise[index*4+2] = float16FromFloat32(0.5)
-		noise[index*4+3] = float16FromFloat32(1.0)
+		x := rng.nextFloat()*2 - 1
+		y := rng.nextFloat()*2 - 1
+		noise = append(noise, byte((x*0.5+0.5)*255), byte((y*0.5+0.5)*255), 128, 255)
 	}
 	return noise
-}
-
-// float16FromFloat32 encodes a float32 as IEEE 754 binary16. Used to
-// upload the SSAO noise pattern as Rgba16Float without pulling in a
-// half-float dependency.
-func float16FromFloat32(value float32) uint16 {
-	bits := math.Float32bits(value)
-	sign := uint16((bits >> 16) & 0x8000)
-	mant := bits & 0x7fffff
-	exp := int32((bits >> 23) & 0xff)
-	if exp == 0xff {
-		if mant != 0 {
-			return sign | 0x7e00
-		}
-		return sign | 0x7c00
-	}
-	exp -= 127 - 15
-	if exp >= 0x1f {
-		return sign | 0x7c00
-	}
-	if exp <= 0 {
-		if exp < -10 {
-			return sign
-		}
-		mant |= 0x800000
-		shift := uint32(14 - exp)
-		mant = mant >> shift
-		return sign | uint16(mant)
-	}
-	return sign | uint16(exp<<10) | uint16(mant>>13)
 }

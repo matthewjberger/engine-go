@@ -3,7 +3,6 @@ package pass
 import (
 	_ "embed"
 	"fmt"
-	"math/rand"
 	"unsafe"
 
 	"github.com/cogentcore/webgpu/wgpu"
@@ -261,14 +260,14 @@ func newSsgiState(device *wgpu.Device, aspect func() float32) (*ssgiPassState, e
 	}
 	device.GetQueue().WriteBuffer(kernelBuffer, 0, unsafe.Slice((*byte)(unsafe.Pointer(&kernel[0])), len(kernel)*16))
 
-	noise := buildSsaoNoise()
+	noise := buildSsgiNoise()
 	noiseTex, err := device.CreateTexture(&wgpu.TextureDescriptor{
 		Label:         "ssgi noise",
 		Size:          wgpu.Extent3D{Width: ssaoNoiseSize, Height: ssaoNoiseSize, DepthOrArrayLayers: 1},
 		MipLevelCount: 1,
 		SampleCount:   1,
 		Dimension:     wgpu.TextureDimension2D,
-		Format:        wgpu.TextureFormatRGBA16Float,
+		Format:        wgpu.TextureFormatRGBA8Unorm,
 		Usage:         wgpu.TextureUsageTextureBinding | wgpu.TextureUsageCopyDst,
 	})
 	if err != nil {
@@ -280,8 +279,8 @@ func newSsgiState(device *wgpu.Device, aspect func() float32) (*ssgiPassState, e
 	}
 	device.GetQueue().WriteTexture(
 		&wgpu.ImageCopyTexture{Texture: noiseTex, Aspect: wgpu.TextureAspectAll},
-		unsafe.Slice((*byte)(unsafe.Pointer(&noise[0])), len(noise)*2),
-		&wgpu.TextureDataLayout{BytesPerRow: ssaoNoiseSize * 8, RowsPerImage: ssaoNoiseSize},
+		noise,
+		&wgpu.TextureDataLayout{BytesPerRow: ssaoNoiseSize * 4, RowsPerImage: ssaoNoiseSize},
 		&wgpu.Extent3D{Width: ssaoNoiseSize, Height: ssaoNoiseSize, DepthOrArrayLayers: 1},
 	)
 
@@ -475,20 +474,17 @@ func (state *ssgiPassState) recreateRawTexture(device *wgpu.Device, width, heigh
 	return nil
 }
 
-// buildSsgiKernel mirrors the reference engine's kernel build:
-// each sample is a hemisphere-aligned unit vector (Z in [0.1, 1.0])
-// then multiplied by an index-weighted scale that biases the
-// distribution toward small offsets. The squared falloff keeps
-// most rays close to the surface, which avoids the long, jittery
-// ray-march hits at far-away neighbors that produce the screen-
-// locked ghost trails during camera motion.
+// buildSsgiKernel mirrors the reference engine's kernel build: the
+// same LCG seeded with 67890, hemisphere vectors with Z in
+// [0.1, 1.0], scaled by 0.1 + (i/N)^2 * 0.9 to cluster samples
+// close to the surface.
 func buildSsgiKernel() []mgl32.Vec4 {
-	rng := rand.New(rand.NewSource(3))
+	rng := nightshadeLCG(67890)
 	kernel := make([]mgl32.Vec4, ssgiKernelSize)
 	for index := 0; index < ssgiKernelSize; index++ {
-		x := float32(rng.Float64()*2 - 1)
-		y := float32(rng.Float64()*2 - 1)
-		z := float32(rng.Float64()*0.9 + 0.1)
+		x := rng.nextFloat()*2 - 1
+		y := rng.nextFloat()*2 - 1
+		z := rng.nextFloat()*0.9 + 0.1
 		sample := mgl32.Vec3{x, y, z}.Normalize()
 		t := float32(index) / float32(ssgiKernelSize)
 		scale := 0.1 + t*t*0.9
@@ -496,6 +492,19 @@ func buildSsgiKernel() []mgl32.Vec4 {
 		kernel[index] = mgl32.Vec4{sample.X(), sample.Y(), sample.Z(), 0}
 	}
 	return kernel
+}
+
+// buildSsgiNoise is the SSGI counterpart of buildSsaoNoise, seeded
+// with 98765 to match the reference engine's noise pattern.
+func buildSsgiNoise() []byte {
+	rng := nightshadeLCG(98765)
+	noise := make([]byte, 0, ssaoNoiseSize*ssaoNoiseSize*4)
+	for index := 0; index < ssaoNoiseSize*ssaoNoiseSize; index++ {
+		x := rng.nextFloat()*2 - 1
+		y := rng.nextFloat()*2 - 1
+		noise = append(noise, byte((x*0.5+0.5)*255), byte((y*0.5+0.5)*255), 128, 255)
+	}
+	return noise
 }
 
 func newSsgiBlurState(device *wgpu.Device, owner *ssgiPassState) (*ssgiBlurPassState, error) {
