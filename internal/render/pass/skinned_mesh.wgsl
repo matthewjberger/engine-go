@@ -91,6 +91,8 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
 
 @fragment
 fn fragment_main(in: VertexOutput) -> FragmentOutput {
+    let ddx_uv = dpdx(in.uv);
+    let ddy_uv = dpdy(in.uv);
     let instance = instances[in.instance];
     if (instance.alpha_mode == 2u) {
         discard;
@@ -98,7 +100,7 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     var base_color = instance.base_color;
     if (instance.base_layer != NO_TEXTURE_LAYER) {
         let layer = i32(instance.base_layer & 0xFFFFu);
-        let sampled = textureSample(material_srgb_array, material_sampler, in.uv, layer);
+        let sampled = textureSampleGrad(material_srgb_array, material_sampler, in.uv, layer, ddx_uv, ddy_uv);
         base_color = base_color * sampled;
     }
     let albedo = base_color.rgb * in.color.rgb;
