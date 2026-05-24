@@ -85,7 +85,7 @@ struct Material {
     diffuse_transmission_color_layer: u32,
 
     diffuse_transmission_color_factor: vec3<f32>,
-    _pad_dt:                           f32,
+    blend_opaque_alpha_threshold:      f32,
 
     base_transform:               TextureTransform,
     normal_transform:             TextureTransform,

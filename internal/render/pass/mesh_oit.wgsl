@@ -85,7 +85,7 @@ struct Material {
     diffuse_transmission_color_layer: u32,
 
     diffuse_transmission_color_factor: vec3<f32>,
-    _pad_dt:                           f32,
+    blend_opaque_alpha_threshold:      f32,
 
     base_transform:               TextureTransform,
     normal_transform:             TextureTransform,
@@ -156,6 +156,25 @@ fn oit_weight(view_z: f32, a: f32) -> f32 {
     let z_scale = max(view_proj_uniform.oit_z_scale, 1.0);
     let z_ratio = view_z / z_scale;
     return a * clamp(0.03 / (1e-5 + pow(z_ratio, 4.0)), 1e-2, 3e3);
+}
+
+@fragment
+fn fs_blend_opaque_prepass(in: VertexOutput) {
+    let mat = materials[in.material_index];
+    if (mat.alpha_mode != 2u) {
+        discard;
+    }
+    if (mat.transmission_factor > 0.0) {
+        return;
+    }
+    var alpha = mat.base_color.a * in.color.a;
+    if (mat.base_layer != NO_TEXTURE_LAYER) {
+        let layer = i32(mat.base_layer & 0xFFFFu);
+        alpha = alpha * textureSampleLevel(material_srgb_array, material_sampler, in.uv, layer, 0.0).a;
+    }
+    if (alpha < mat.blend_opaque_alpha_threshold) {
+        discard;
+    }
 }
 
 @fragment

@@ -36,12 +36,13 @@ type oitDirectionalUniform struct {
 }
 
 type oitMeshPassState struct {
-	pipeline       *wgpu.RenderPipeline
-	globalLayout   *wgpu.BindGroupLayout
-	globalGroup    *wgpu.BindGroup
-	viewProjBuffer *wgpu.Buffer
-	directionalBuf *wgpu.Buffer
-	aspectFn       func() float32
+	pipeline        *wgpu.RenderPipeline
+	prepassPipeline *wgpu.RenderPipeline
+	globalLayout    *wgpu.BindGroupLayout
+	globalGroup     *wgpu.BindGroup
+	viewProjBuffer  *wgpu.Buffer
+	directionalBuf  *wgpu.Buffer
+	aspectFn        func() float32
 }
 
 func AddOitMeshPass(renderer *render.Renderer) (*render.Pass, error) {
@@ -177,12 +178,55 @@ func newOitMeshState(device *wgpu.Device, aspect func() float32) (*oitMeshPassSt
 		return nil, fmt.Errorf("oit_mesh: pipeline: %w", err)
 	}
 
+	prepassPipeline, err := device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
+		Label:  "oit_mesh blend-opaque prepass pipeline",
+		Layout: pipelineLayout,
+		Vertex: wgpu.VertexState{
+			Module:     module,
+			EntryPoint: "vertex_main",
+			Buffers: []wgpu.VertexBufferLayout{{
+				ArrayStride: uint64(unsafe.Sizeof(asset.MeshVertex{})),
+				StepMode:    wgpu.VertexStepModeVertex,
+				Attributes: []wgpu.VertexAttribute{
+					{Format: wgpu.VertexFormatFloat32x4, Offset: 0, ShaderLocation: 0},
+					{Format: wgpu.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 1},
+					{Format: wgpu.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2},
+					{Format: wgpu.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3},
+					{Format: wgpu.VertexFormatFloat32x4, Offset: 64, ShaderLocation: 4},
+				},
+			}},
+		},
+		Primitive: wgpu.PrimitiveState{
+			Topology:  wgpu.PrimitiveTopologyTriangleList,
+			FrontFace: wgpu.FrontFaceCCW,
+			CullMode:  wgpu.CullModeNone,
+		},
+		DepthStencil: &wgpu.DepthStencilState{
+			Format:            render.DepthFormat,
+			DepthWriteEnabled: true,
+			DepthCompare:      wgpu.CompareFunctionGreater,
+			StencilFront:      wgpu.StencilFaceState{Compare: wgpu.CompareFunctionAlways},
+			StencilBack:       wgpu.StencilFaceState{Compare: wgpu.CompareFunctionAlways},
+		},
+		Multisample: wgpu.MultisampleState{Count: 1, Mask: 0xFFFFFFFF},
+		Fragment: &wgpu.FragmentState{
+			Module:     module,
+			EntryPoint: "fs_blend_opaque_prepass",
+		},
+	})
+	if err != nil {
+		pipeline.Release()
+		globalLayout.Release()
+		return nil, fmt.Errorf("oit_mesh: blend-opaque prepass pipeline: %w", err)
+	}
+
 	viewProjBuffer, err := device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label: "oit_mesh view_proj",
 		Size:  uint64(unsafe.Sizeof(oitViewProjUniform{})),
 		Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
 	})
 	if err != nil {
+		prepassPipeline.Release()
 		pipeline.Release()
 		globalLayout.Release()
 		return nil, fmt.Errorf("oit_mesh: view_proj buffer: %w", err)
@@ -194,17 +238,19 @@ func newOitMeshState(device *wgpu.Device, aspect func() float32) (*oitMeshPassSt
 	})
 	if err != nil {
 		viewProjBuffer.Release()
+		prepassPipeline.Release()
 		pipeline.Release()
 		globalLayout.Release()
 		return nil, fmt.Errorf("oit_mesh: directional buffer: %w", err)
 	}
 
 	return &oitMeshPassState{
-		pipeline:       pipeline,
-		globalLayout:   globalLayout,
-		viewProjBuffer: viewProjBuffer,
-		directionalBuf: directionalBuf,
-		aspectFn:       aspect,
+		pipeline:        pipeline,
+		prepassPipeline: prepassPipeline,
+		globalLayout:    globalLayout,
+		viewProjBuffer:  viewProjBuffer,
+		directionalBuf:  directionalBuf,
+		aspectFn:        aspect,
 	}, nil
 }
 
@@ -316,6 +362,37 @@ func oitMeshExecute(state *oitMeshPassState, context *render.PassContext) error 
 	depth.StencilLoadOp = wgpu.LoadOpLoad
 	depth.StencilStoreOp = wgpu.StoreOpStore
 
+	prepassDepth, err := context.DepthAttachment("depth")
+	if err != nil {
+		return err
+	}
+	prepassDepth.DepthLoadOp = wgpu.LoadOpLoad
+	prepassDepth.DepthStoreOp = wgpu.StoreOpStore
+	prepassDepth.StencilLoadOp = wgpu.LoadOpLoad
+	prepassDepth.StencilStoreOp = wgpu.StoreOpStore
+
+	prepass := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
+		Label:                  "oit_mesh blend-opaque prepass",
+		DepthStencilAttachment: &prepassDepth,
+	})
+	prepass.SetPipeline(state.prepassPipeline)
+	prepass.SetBindGroup(0, state.globalGroup, nil)
+	for _, handle := range meshState.sortedHandles {
+		bucket := meshState.perHandle[handle]
+		if bucket == nil || bucket.bindGroup == nil {
+			continue
+		}
+		entry, ok := assets.Lookup(handle)
+		if !ok {
+			continue
+		}
+		prepass.SetBindGroup(1, bucket.bindGroup, nil)
+		prepass.SetVertexBuffer(0, entry.Vertices, 0, wgpu.WholeSize)
+		prepass.Draw(entry.VertexCount, uint32(len(bucket.slotEntity)), 0, 0)
+	}
+	prepass.End()
+	prepass.Release()
+
 	passEnc := context.Encoder.BeginRenderPass(&wgpu.RenderPassDescriptor{
 		Label:                  "oit_mesh",
 		ColorAttachments:       []wgpu.RenderPassColorAttachment{accum, reveal, entityID},
@@ -357,6 +434,9 @@ func oitMeshRelease(state *oitMeshPassState) {
 	}
 	if state.viewProjBuffer != nil {
 		state.viewProjBuffer.Release()
+	}
+	if state.prepassPipeline != nil {
+		state.prepassPipeline.Release()
 	}
 	if state.pipeline != nil {
 		state.pipeline.Release()

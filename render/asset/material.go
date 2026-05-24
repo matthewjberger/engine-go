@@ -117,6 +117,11 @@ type Material struct {
 	DiffuseTransmissionFactor      float32
 	DiffuseTransmissionColorFactor [3]float32
 	DiffuseTransmissionColorLayer  uint32
+
+	// Alpha threshold above which a BLEND-mode fragment writes depth in the
+	// blend-opaque prepass, so near-opaque parts of transparent surfaces occlude
+	// the OIT fragments behind them.
+	BlendOpaqueAlphaThreshold float32
 }
 
 func DefaultMaterial() Material {
@@ -169,6 +174,8 @@ func DefaultMaterial() Material {
 
 		DiffuseTransmissionColorFactor: [3]float32{1, 1, 1},
 		DiffuseTransmissionColorLayer:  NoTextureLayer,
+
+		BlendOpaqueAlphaThreshold: 0.99,
 	}
 }
 
@@ -264,7 +271,7 @@ type MaterialGPU struct {
 	DiffuseTransmissionColorLayer uint32
 
 	DiffuseTransmissionColorFactor [3]float32
-	Pad2                           float32
+	BlendOpaqueAlphaThreshold      float32
 
 	BaseTransform              texTransformGPU
 	NormalTransform            texTransformGPU
@@ -301,6 +308,11 @@ func (m Material) ToGPU() MaterialGPU {
 	}
 	cosR := float32(math.Cos(float64(m.AnisotropyRotation)))
 	sinR := float32(math.Sin(float64(m.AnisotropyRotation)))
+
+	blendOpaqueAlphaThreshold := m.BlendOpaqueAlphaThreshold
+	if blendOpaqueAlphaThreshold <= 0 {
+		blendOpaqueAlphaThreshold = 0.99
+	}
 
 	baseRow0, baseRow1 := m.BaseTransform.packed()
 	normalRow0, normalRow1 := m.NormalTransform.packed()
@@ -367,6 +379,8 @@ func (m Material) ToGPU() MaterialGPU {
 		DiffuseTransmissionFactor:      m.DiffuseTransmissionFactor,
 		DiffuseTransmissionColorFactor: m.DiffuseTransmissionColorFactor,
 		DiffuseTransmissionColorLayer:  m.DiffuseTransmissionColorLayer,
+
+		BlendOpaqueAlphaThreshold: blendOpaqueAlphaThreshold,
 
 		BaseTransform:              texTransformGPU{Row0: baseRow0, Row1: baseRow1},
 		NormalTransform:            texTransformGPU{Row0: normalRow0, Row1: normalRow1},
