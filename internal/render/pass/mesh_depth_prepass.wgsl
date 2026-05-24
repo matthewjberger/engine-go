@@ -92,6 +92,21 @@ struct Material {
     metallic_roughness_transform: TextureTransform,
     occlusion_transform:          TextureTransform,
     emissive_transform:           TextureTransform,
+
+    transmission_transform:              TextureTransform,
+    thickness_transform:                 TextureTransform,
+    specular_transform:                  TextureTransform,
+    specular_color_transform:            TextureTransform,
+    clearcoat_transform:                 TextureTransform,
+    clearcoat_roughness_transform:       TextureTransform,
+    clearcoat_normal_transform:          TextureTransform,
+    sheen_color_transform:               TextureTransform,
+    sheen_roughness_transform:           TextureTransform,
+    iridescence_transform:               TextureTransform,
+    iridescence_thickness_transform:     TextureTransform,
+    anisotropy_transform:                TextureTransform,
+    diffuse_transmission_transform:      TextureTransform,
+    diffuse_transmission_color_transform: TextureTransform,
 };
 
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
