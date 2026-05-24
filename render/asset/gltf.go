@@ -204,7 +204,11 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 				if err != nil {
 					return nil, fmt.Errorf("gltf %q: mesh %d primitive %d (skinned): %w", label, meshIdx, primIdx, err)
 				}
-				handle, err := skinnedAssets.Register(device, name, vertices)
+				morphDisplacements, morphTargetCount, err := readMorphDisplacements(doc, prim)
+				if err != nil {
+					return nil, fmt.Errorf("gltf %q: mesh %d primitive %d (skinned) morph: %w", label, meshIdx, primIdx, err)
+				}
+				handle, err := skinnedAssets.RegisterWithMorph(device, name, vertices, morphDisplacements, morphTargetCount)
 				if err != nil {
 					return nil, err
 				}
@@ -288,6 +292,9 @@ func LoadGltfReaderOpts(device *wgpu.Device, queue *wgpu.Queue, assets *MeshAsse
 				out.HasSkinnedMesh = true
 				out.SkinnedMesh = skinnedPrims[0].Mesh
 				out.Material = skinnedPrims[0].Material
+				if _, count := skinnedAssets.MorphInfo(skinnedPrims[0].Mesh); count > 0 {
+					out.MorphTargetCount = count
+				}
 			default:
 				if len(staticPrims) > 0 {
 					out.ChildPrimitives = staticPrims
@@ -381,6 +388,10 @@ func SpawnLoadedScene(world *ecs.World, scene *LoadedScene, device *wgpu.Device)
 		if node.HasSkinnedMesh {
 			world.AddComponents(entity, skinnedMeshMask|materialMask)
 			ecs.Set(world, entity, node.Material)
+			if node.MorphTargetCount > 0 {
+				world.AddComponents(entity, morphMask)
+				ecs.Set(world, entity, MorphWeights{Weights: make([]float32, node.MorphTargetCount)})
+			}
 		}
 		for _, child := range node.Children {
 			world.AddComponents(entities[child], parentMask)

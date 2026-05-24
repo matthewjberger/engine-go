@@ -273,10 +273,25 @@ struct SkinnedInstance {
     material_index:       u32,
     attenuation_color:    vec3<f32>,
     world_scale_factor:   f32,
+    morph_weights:             array<f32, 8>,
+    morph_target_count:        u32,
+    morph_displacement_offset: u32,
+    morph_vertex_count:        u32,
+    morph_pad:                 u32,
+};
+
+struct MorphDisplacement {
+    position: vec3<f32>,
+    _pad0: f32,
+    normal: vec3<f32>,
+    _pad1: f32,
+    tangent: vec3<f32>,
+    _pad2: f32,
 };
 
 @group(2) @binding(0) var<storage, read> joint_matrices: array<mat4x4<f32>>;
 @group(2) @binding(1) var<storage, read> instances:      array<SkinnedInstance>;
+@group(2) @binding(2) var<storage, read> morph_displacements: array<MorphDisplacement>;
 
 @group(3) @binding(0) var irradiance_map:  texture_cube<f32>;
 @group(3) @binding(1) var prefiltered_env: texture_cube<f32>;
@@ -843,9 +858,23 @@ fn shade_one_light(light: Light, point_to_light: vec3<f32>, v: vec3<f32>, n: vec
 }
 
 @vertex
-fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32) -> VertexOutput {
-    let inst = instances[instance_index];
-    let position = vec4<f32>(input.position.xyz, 1.0);
+fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var inst = instances[instance_index];
+    var morphed_position = input.position.xyz;
+    var morphed_normal = input.normal.xyz;
+    var morphed_tangent = input.tangent.xyz;
+    if (inst.morph_target_count > 0u) {
+        for (var t = 0u; t < inst.morph_target_count; t = t + 1u) {
+            let w = inst.morph_weights[t];
+            if (abs(w) > 0.0001) {
+                let d = morph_displacements[inst.morph_displacement_offset + t * inst.morph_vertex_count + vertex_index];
+                morphed_position = morphed_position + d.position * w;
+                morphed_normal = morphed_normal + d.normal * w;
+                morphed_tangent = morphed_tangent + d.tangent * w;
+            }
+        }
+    }
+    let position = vec4<f32>(morphed_position, 1.0);
     let joint_offset = inst.joint_offset;
     var skinned_position = vec3<f32>(0.0, 0.0, 0.0);
     var skinned_normal = vec3<f32>(0.0, 0.0, 0.0);
@@ -857,8 +886,8 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
             let joint_matrix = joint_matrices[joint_offset + joint_index];
             skinned_position = skinned_position + (joint_matrix * position).xyz * joint_weight;
             let normal_matrix = mat3x3<f32>(joint_matrix[0].xyz, joint_matrix[1].xyz, joint_matrix[2].xyz);
-            skinned_normal = skinned_normal + (normal_matrix * input.normal.xyz) * joint_weight;
-            skinned_tangent = skinned_tangent + (normal_matrix * input.tangent.xyz) * joint_weight;
+            skinned_normal = skinned_normal + (normal_matrix * morphed_normal) * joint_weight;
+            skinned_tangent = skinned_tangent + (normal_matrix * morphed_tangent) * joint_weight;
         }
     }
     if (length(skinned_normal) < 0.0001) {

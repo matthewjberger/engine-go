@@ -31,6 +31,7 @@ type skinnedMeshOitState struct {
 	instancesGen    uint64
 	jointBuffer     *wgpu.Buffer
 	instancesBuffer *wgpu.Buffer
+	morphBuffer     *wgpu.Buffer
 }
 
 func AddSkinnedMeshOitPass(renderer *render.Renderer) (*render.Pass, error) {
@@ -77,6 +78,7 @@ func newSkinnedMeshOitState(device *wgpu.Device) (*skinnedMeshOitState, error) {
 		Entries: []wgpu.BindGroupLayoutEntry{
 			{Binding: 0, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
 			{Binding: 1, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
+			{Binding: 2, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
 		},
 	})
 	if err != nil {
@@ -202,7 +204,7 @@ func skinnedMeshOitPrepare(state *skinnedMeshOitState, context *render.PassConte
 		return nil
 	}
 	ensureSkinnedHandleBindGroup(context.Device, state.handleLayout, &state.handleBindGroup,
-		&state.jointGen, &state.instancesGen, &state.jointBuffer, &state.instancesBuffer, skinningRes.Compute)
+		&state.jointGen, &state.instancesGen, &state.jointBuffer, &state.instancesBuffer, &state.morphBuffer, skinningRes.Compute, skinnedMorphBuffer(context.World, context.Device))
 	return nil
 }
 

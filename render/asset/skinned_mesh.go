@@ -40,19 +40,84 @@ func NewSkin(jointCount int) (*Skin, error) {
 }
 
 type skinnedMeshEntry struct {
-	Name        string
-	Vertices    *wgpu.Buffer
-	VertexCount uint32
-	Bounds      BoundingVolume
-	CpuVertices []SkinnedMeshVertex
+	Name             string
+	Vertices         *wgpu.Buffer
+	VertexCount      uint32
+	Bounds           BoundingVolume
+	CpuVertices      []SkinnedMeshVertex
+	MorphOffset      uint32
+	MorphTargetCount uint32
 }
 
 type SkinnedMeshAssets struct {
 	entries []skinnedMeshEntry
+
+	// Morph target deltas for every skinned mesh share one storage buffer
+	// (skinned instances are drawn from one global instance array, so a global
+	// morph buffer keyed by per-instance offset matches that model).
+	morphData       []MorphDisplacement
+	morphBuffer     *wgpu.Buffer
+	morphDummy      *wgpu.Buffer
+	morphGeneration uint64
 }
 
 func NewSkinnedMeshAssets() *SkinnedMeshAssets {
 	return &SkinnedMeshAssets{}
+}
+
+// RegisterWithMorph registers a skinned mesh, appending its expanded morph
+// displacements (target-major) to the shared morph buffer.
+func (assets *SkinnedMeshAssets) RegisterWithMorph(device *wgpu.Device, name string, vertices []SkinnedMeshVertex, displacements []MorphDisplacement, targetCount uint32) (SkinnedMeshHandle, error) {
+	handle, err := assets.Register(device, name, vertices)
+	if err != nil {
+		return 0, err
+	}
+	if targetCount == 0 || len(displacements) == 0 {
+		return handle, nil
+	}
+	offset := uint32(len(assets.morphData))
+	assets.morphData = append(assets.morphData, displacements...)
+	buffer, err := device.CreateBufferInit(&wgpu.BufferInitDescriptor{
+		Label:    "skinned morph buffer",
+		Contents: wgpu.ToBytes(assets.morphData),
+		Usage:    wgpu.BufferUsageStorage,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("skinned mesh %q: morph buffer: %w", name, err)
+	}
+	if assets.morphBuffer != nil {
+		assets.morphBuffer.Release()
+	}
+	assets.morphBuffer = buffer
+	assets.morphGeneration++
+	assets.entries[handle].MorphOffset = offset
+	assets.entries[handle].MorphTargetCount = targetCount
+	return handle, nil
+}
+
+// MorphBuffer returns the shared skinned morph buffer, creating a 1-element
+// dummy when no skinned mesh carries morph targets.
+func (assets *SkinnedMeshAssets) MorphBuffer(device *wgpu.Device) *wgpu.Buffer {
+	if assets.morphBuffer != nil {
+		return assets.morphBuffer
+	}
+	if assets.morphDummy == nil {
+		assets.morphDummy, _ = device.CreateBuffer(&wgpu.BufferDescriptor{
+			Label: "skinned morph dummy",
+			Size:  uint64(unsafe.Sizeof(MorphDisplacement{})),
+			Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst,
+		})
+	}
+	return assets.morphDummy
+}
+
+func (assets *SkinnedMeshAssets) MorphGeneration() uint64 { return assets.morphGeneration }
+
+func (assets *SkinnedMeshAssets) MorphInfo(handle SkinnedMeshHandle) (offset uint32, targetCount uint32) {
+	if int(handle) >= len(assets.entries) {
+		return 0, 0
+	}
+	return assets.entries[handle].MorphOffset, assets.entries[handle].MorphTargetCount
 }
 
 func (assets *SkinnedMeshAssets) Register(device *wgpu.Device, name string, vertices []SkinnedMeshVertex) (SkinnedMeshHandle, error) {
@@ -97,6 +162,14 @@ func (assets *SkinnedMeshAssets) Release() {
 		}
 	}
 	assets.entries = nil
+	if assets.morphBuffer != nil {
+		assets.morphBuffer.Release()
+		assets.morphBuffer = nil
+	}
+	if assets.morphDummy != nil {
+		assets.morphDummy.Release()
+		assets.morphDummy = nil
+	}
 }
 
 type SkinnedMeshAssetsResource struct {

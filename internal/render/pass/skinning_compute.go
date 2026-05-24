@@ -43,9 +43,15 @@ type SkinnedInstance struct {
 	MaterialIndex       uint32
 	AttenuationColor    [3]float32
 	WorldScaleFactor    float32
+
+	MorphWeights            [8]float32
+	MorphTargetCount        uint32
+	MorphDisplacementOffset uint32
+	MorphVertexCount        uint32
+	MorphPad                uint32
 }
 
-const skinnedInstanceSize = uintptr(80)
+const skinnedInstanceSize = uintptr(128)
 
 type _ [skinnedInstanceSize - unsafe.Sizeof(SkinnedInstance{})]byte
 type _ [unsafe.Sizeof(SkinnedInstance{}) - skinnedInstanceSize]byte
@@ -372,6 +378,10 @@ func (sc *SkinningCompute) buildInstances(world *ecs.World, queue *wgpu.Queue) {
 	if resource, ok := ecs.Resource[asset.MaterialRegistryResource](world); ok && resource != nil {
 		registry = resource.Registry
 	}
+	var skinnedAssets *asset.SkinnedMeshAssets
+	if resource, ok := ecs.Resource[asset.SkinnedMeshAssetsResource](world); ok && resource != nil {
+		skinnedAssets = resource.Assets
+	}
 
 	type record struct {
 		instance    SkinnedInstance
@@ -416,6 +426,21 @@ func (sc *SkinningCompute) buildInstances(world *ecs.World, queue *wgpu.Queue) {
 			scaleY := mgl32.Vec3{matrix[4], matrix[5], matrix[6]}.Len()
 			scaleZ := mgl32.Vec3{matrix[8], matrix[9], matrix[10]}.Len()
 			instance.WorldScaleFactor = (scaleX + scaleY + scaleZ) / 3.0
+		}
+		if skinnedAssets != nil {
+			offset, targetCount := skinnedAssets.MorphInfo(sm.Mesh)
+			if targetCount > 0 {
+				instance.MorphTargetCount = targetCount
+				instance.MorphDisplacementOffset = offset
+				if entry, ok := skinnedAssets.Lookup(sm.Mesh); ok {
+					instance.MorphVertexCount = entry.VertexCount
+				}
+				if weights, ok := ecs.Get[asset.MorphWeights](world, entity); ok && weights != nil {
+					for i := 0; i < len(weights.Weights) && i < 8; i++ {
+						instance.MorphWeights[i] = weights.Weights[i]
+					}
+				}
+			}
 		}
 		if registry != nil {
 			materialID, isNew := registry.AssignID(entity)

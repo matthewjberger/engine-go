@@ -38,6 +38,7 @@ type skinnedMeshPassState struct {
 	instancesGen    uint64
 	jointBuffer     *wgpu.Buffer
 	instancesBuffer *wgpu.Buffer
+	morphBuffer     *wgpu.Buffer
 }
 
 func AddSkinnedMeshPass(renderer *render.Renderer) (*render.Pass, error) {
@@ -83,6 +84,7 @@ func newSkinnedMeshState(device *wgpu.Device) (*skinnedMeshPassState, error) {
 		Entries: []wgpu.BindGroupLayoutEntry{
 			{Binding: 0, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
 			{Binding: 1, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
+			{Binding: 2, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
 		},
 	})
 	if err != nil {
@@ -168,15 +170,15 @@ func newSkinnedMeshState(device *wgpu.Device) (*skinnedMeshPassState, error) {
 	}, nil
 }
 
-func ensureSkinnedHandleBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, cached **wgpu.BindGroup, jointGen, instGen *uint64, jointBuf, instBuf **wgpu.Buffer, sc *SkinningCompute) *wgpu.BindGroup {
+func ensureSkinnedHandleBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLayout, cached **wgpu.BindGroup, jointGen, instGen *uint64, jointBuf, instBuf, morphBuf **wgpu.Buffer, sc *SkinningCompute, morph *wgpu.Buffer) *wgpu.BindGroup {
 	joint := sc.JointMatrixBuffer()
 	instances := sc.InstancesBuffer()
-	if joint == nil || instances == nil {
+	if joint == nil || instances == nil || morph == nil {
 		return nil
 	}
 	jg := sc.Generation()
 	ig := sc.InstancesGeneration()
-	if *cached != nil && (*jointGen != jg || *instGen != ig || *jointBuf != joint || *instBuf != instances) {
+	if *cached != nil && (*jointGen != jg || *instGen != ig || *jointBuf != joint || *instBuf != instances || *morphBuf != morph) {
 		(*cached).Release()
 		*cached = nil
 	}
@@ -187,6 +189,7 @@ func ensureSkinnedHandleBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLay
 			Entries: []wgpu.BindGroupEntry{
 				{Binding: 0, Buffer: joint, Offset: 0, Size: wgpu.WholeSize},
 				{Binding: 1, Buffer: instances, Offset: 0, Size: wgpu.WholeSize},
+				{Binding: 2, Buffer: morph, Offset: 0, Size: wgpu.WholeSize},
 			},
 		})
 		if err != nil {
@@ -197,8 +200,17 @@ func ensureSkinnedHandleBindGroup(device *wgpu.Device, layout *wgpu.BindGroupLay
 		*instGen = ig
 		*jointBuf = joint
 		*instBuf = instances
+		*morphBuf = morph
 	}
 	return *cached
+}
+
+func skinnedMorphBuffer(world *ecs.World, device *wgpu.Device) *wgpu.Buffer {
+	resource, ok := ecs.Resource[asset.SkinnedMeshAssetsResource](world)
+	if !ok || resource == nil || resource.Assets == nil {
+		return nil
+	}
+	return resource.Assets.MorphBuffer(device)
 }
 
 func skinnedMeshPrepare(state *skinnedMeshPassState, context *render.PassContext) error {
@@ -207,7 +219,7 @@ func skinnedMeshPrepare(state *skinnedMeshPassState, context *render.PassContext
 		return nil
 	}
 	ensureSkinnedHandleBindGroup(context.Device, state.handleLayout, &state.handleBindGroup,
-		&state.jointGen, &state.instancesGen, &state.jointBuffer, &state.instancesBuffer, skinningRes.Compute)
+		&state.jointGen, &state.instancesGen, &state.jointBuffer, &state.instancesBuffer, &state.morphBuffer, skinningRes.Compute, skinnedMorphBuffer(context.World, context.Device))
 	return nil
 }
 
