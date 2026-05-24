@@ -76,6 +76,17 @@ type shadowSkinnedEntry struct {
 	bindGroup    *wgpu.BindGroup
 	jointGen     uint64
 	jointBuffer  *wgpu.Buffer
+	morphBuffer  *wgpu.Buffer
+}
+
+// skinnedShadowParams mirrors the WGSL uniform: joint offset plus the morph
+// fields needed to deform skinned shadow casters.
+type skinnedShadowParams struct {
+	JointOffset             uint32
+	MorphTargetCount        uint32
+	MorphDisplacementOffset uint32
+	MorphVertexCount        uint32
+	MorphWeights            [8]float32
 }
 
 type shadowInstancedEntry struct {
@@ -342,16 +353,9 @@ func NewShadowDepthPass(device *wgpu.Device, shadow *Shadow) (*render.Pass, erro
 	skinnedHandleBgLayout, err := device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{
 		Label: "shadow per-handle skinned bind group layout",
 		Entries: []wgpu.BindGroupLayoutEntry{
-			{
-				Binding:    0,
-				Visibility: wgpu.ShaderStageVertex,
-				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage},
-			},
-			{
-				Binding:    1,
-				Visibility: wgpu.ShaderStageVertex,
-				Buffer:     wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform},
-			},
+			{Binding: 0, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
+			{Binding: 1, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeUniform}},
+			{Binding: 2, Visibility: wgpu.ShaderStageVertex, Buffer: wgpu.BufferBindingLayout{Type: wgpu.BufferBindingTypeReadOnlyStorage}},
 		},
 	})
 	if err != nil {
@@ -603,7 +607,7 @@ func shadowDepthExecute(state *shadowDepthPassState, context *render.PassContext
 			if entry == nil {
 				offsetBuf, err := context.Device.CreateBuffer(&wgpu.BufferDescriptor{
 					Label: "shadow skinned joint offset",
-					Size:  16,
+					Size:  uint64(unsafe.Sizeof(skinnedShadowParams{})),
 					Usage: wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
 				})
 				if err != nil {
@@ -612,19 +616,36 @@ func shadowDepthExecute(state *shadowDepthPassState, context *render.PassContext
 				entry = &shadowSkinnedEntry{offsetBuffer: offsetBuf}
 				state.skinnedJointBindCache[entity] = entry
 			}
-			offset := [4]uint32{skinning.JointOffset(entity), 0, 0, 0}
-			writeBuffer(context.Device, context.Queue, context.Encoder, entry.offsetBuffer, 0, bytesOf(&offset))
-			if entry.bindGroup != nil && (entry.jointGen != generation || entry.jointBuffer != jointBuffer) {
+			params := skinnedShadowParams{JointOffset: skinning.JointOffset(entity)}
+			morphBuffer := skinnedMorphBuffer(context.World, context.Device)
+			if skinnedAssets != nil {
+				offset, targetCount := skinnedAssets.MorphInfo(skinned.Mesh)
+				if targetCount > 0 {
+					params.MorphTargetCount = targetCount
+					params.MorphDisplacementOffset = offset
+					if meshEntry, ok := skinnedAssets.Lookup(skinned.Mesh); ok {
+						params.MorphVertexCount = meshEntry.VertexCount
+					}
+					if weights, ok := ecs.Get[asset.MorphWeights](context.World, entity); ok && weights != nil {
+						for i := 0; i < len(weights.Weights) && i < 8; i++ {
+							params.MorphWeights[i] = weights.Weights[i]
+						}
+					}
+				}
+			}
+			writeBuffer(context.Device, context.Queue, context.Encoder, entry.offsetBuffer, 0, bytesOf(&params))
+			if entry.bindGroup != nil && (entry.jointGen != generation || entry.jointBuffer != jointBuffer || entry.morphBuffer != morphBuffer) {
 				entry.bindGroup.Release()
 				entry.bindGroup = nil
 			}
-			if entry.bindGroup == nil {
+			if entry.bindGroup == nil && morphBuffer != nil {
 				bg, err := context.Device.CreateBindGroup(&wgpu.BindGroupDescriptor{
 					Label:  "shadow skinned handle bg",
 					Layout: state.skinnedHandleBgLayout,
 					Entries: []wgpu.BindGroupEntry{
 						{Binding: 0, Buffer: jointBuffer, Offset: 0, Size: wgpu.WholeSize},
-						{Binding: 1, Buffer: entry.offsetBuffer, Offset: 0, Size: 16},
+						{Binding: 1, Buffer: entry.offsetBuffer, Offset: 0, Size: uint64(unsafe.Sizeof(skinnedShadowParams{}))},
+						{Binding: 2, Buffer: morphBuffer, Offset: 0, Size: wgpu.WholeSize},
 					},
 				})
 				if err != nil {
@@ -633,6 +654,7 @@ func shadowDepthExecute(state *shadowDepthPassState, context *render.PassContext
 				entry.bindGroup = bg
 				entry.jointGen = generation
 				entry.jointBuffer = jointBuffer
+				entry.morphBuffer = morphBuffer
 			}
 		})
 	}

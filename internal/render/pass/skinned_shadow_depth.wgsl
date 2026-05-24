@@ -5,15 +5,26 @@ struct CascadeUniforms {
 
 @group(0) @binding(0) var<uniform> cascade: CascadeUniforms;
 
-struct JointOffset {
-    value: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
+struct SkinnedShadowParams {
+    joint_offset: u32,
+    morph_target_count: u32,
+    morph_displacement_offset: u32,
+    morph_vertex_count: u32,
+    morph_weights: array<vec4<f32>, 2>,
+};
+
+struct MorphDisplacement {
+    position: vec3<f32>,
+    _pad0: f32,
+    normal: vec3<f32>,
+    _pad1: f32,
+    tangent: vec3<f32>,
+    _pad2: f32,
 };
 
 @group(1) @binding(0) var<storage, read> joint_matrices: array<mat4x4<f32>>;
-@group(1) @binding(1) var<uniform>       joint_offset:   JointOffset;
+@group(1) @binding(1) var<uniform>       params:         SkinnedShadowParams;
+@group(1) @binding(2) var<storage, read> morph_displacements: array<MorphDisplacement>;
 
 struct VertexInput {
     @location(0) position:      vec4<f32>,
@@ -30,14 +41,24 @@ struct VertexOutput {
 };
 
 @vertex
-fn vertex_main(input: VertexInput) -> VertexOutput {
-    let position = vec4<f32>(input.position.xyz, 1.0);
+fn vertex_main(input: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var local_position = input.position.xyz;
+    if (params.morph_target_count > 0u) {
+        for (var t = 0u; t < params.morph_target_count; t = t + 1u) {
+            let wv = params.morph_weights[t >> 2u];
+            let w = wv[t & 3u];
+            if (abs(w) > 0.0001) {
+                local_position = local_position + morph_displacements[params.morph_displacement_offset + t * params.morph_vertex_count + vertex_index].position * w;
+            }
+        }
+    }
+    let position = vec4<f32>(local_position, 1.0);
     var skinned_position = vec3<f32>(0.0, 0.0, 0.0);
     for (var index = 0u; index < 4u; index = index + 1u) {
         let joint_weight = input.joint_weights[index];
         if (joint_weight > 0.0) {
             let joint_index = input.joint_indices[index];
-            let joint_matrix = joint_matrices[joint_offset.value + joint_index];
+            let joint_matrix = joint_matrices[params.joint_offset + joint_index];
             skinned_position = skinned_position + (joint_matrix * position).xyz * joint_weight;
         }
     }
