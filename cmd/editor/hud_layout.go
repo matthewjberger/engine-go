@@ -46,9 +46,8 @@ type HudHandles struct {
 	ViewMenu   menuPopup
 	AssetsMenu menuPopup
 
-	Khronos             khronosHandles
-	KhronosOpen         bool
-	KhronosScrollPixels float32
+	Khronos     khronosHandles
+	KhronosOpen bool
 
 	ContextMenu   menuPopup
 	ContextTarget ecs.Entity
@@ -221,8 +220,9 @@ func buildMenuPopup(b *ui.Builder, anchorX, anchorY float32, items []string) men
 		Layout:  ui.LayoutColumn,
 		Padding: 4, Spacing: 2,
 		ZIndex: menuPopupZ,
+		Hidden: true,
 	}).
-		Color(ui.Color{RGBA: [4]float32{0, 0, 0, 0}}).
+		Color(ui.Color{RGBA: [4]float32{0.10, 0.11, 0.14, 1}}).
 		Interactive().
 		Entity()
 
@@ -235,11 +235,11 @@ func buildMenuPopup(b *ui.Builder, anchorX, anchorY float32, items []string) men
 			Width: hudMenuPopupWidth - 8, Height: hudMenuItemHeight,
 			ZIndex: menuPopupZ + 1,
 		}).
-			Color(ui.Color{RGBA: [4]float32{0, 0, 0, 0}}).
+			Color(ui.Color{RGBA: [4]float32{0.14, 0.16, 0.20, 1}}).
 			Interactive().
 			Text(ui.Text{
 				Content: label,
-				Color:   [4]float32{0.92, 0.94, 0.98, 0},
+				Color:   [4]float32{0.92, 0.94, 0.98, 1},
 				Scale:   1.4,
 			}).Entity()
 	}

@@ -80,27 +80,7 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
-		drainKhronosPending(worlds, renderer)
-		syncUiPointer(worlds)
-		ctx := newHudContext(worlds)
-		ctx.refreshHudLayout()
-
-		ctx.updateTreeScroll()
-
-		app.TickFrame(worlds, demo, delta)
-		handleRightClick(worlds)
-		driveTextInputs(worlds)
-		handleUiClicks(worlds)
-		ctx.refreshFps()
-		ctx.refreshModeButtons()
-		ctx.refreshMenuPopups()
-		ctx.refreshInteractiveHovers()
-		ctx.refreshEntityTree()
-		ctx.refreshInspector()
-		ctx.updateInspectorCaret()
-		ctx.refreshKhronosBrowser()
-
-		if ctx.Hud.RequestExit {
+		if updateEditorFrame(worlds, renderer, demo, delta) {
 			glfwWindow.SetShouldClose(true)
 		}
 
@@ -112,13 +92,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		pass.ProcessPickingReadback(renderer, worlds.Engine)
-
-		if picking := ecs.MustResource[*pass.Picking](worlds.Engine); (*picking).Result != nil {
-			result := (*picking).Result
-			(*picking).Result = nil
-			handlePickResult(worlds, result.EntityID)
-		}
+		finishEditorFrame(worlds, renderer)
 
 		app.PostFrame(worlds)
 	}

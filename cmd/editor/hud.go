@@ -74,27 +74,7 @@ func paintHover(world *ecs.World, entity ecs.Entity, idle, hover [4]float32) {
 }
 
 func setMenuVisible(world *ecs.World, menu menuPopup, visible bool) {
-	var panelAlpha float32
-	var textAlpha float32
-	if visible {
-		panelAlpha = 1
-		textAlpha = 1
-	}
-	if color, ok := ecs.GetMut[ui.Color](world, menu.Panel); ok {
-		color.RGBA = [4]float32{0.10, 0.11, 0.14, panelAlpha}
-	}
-	for i := 0; i < menu.Count; i++ {
-		if color, ok := ecs.GetMut[ui.Color](world, menu.Items[i]); ok {
-			if visible {
-				color.RGBA = [4]float32{0.14, 0.16, 0.20, 1}
-			} else {
-				color.RGBA = [4]float32{0, 0, 0, 0}
-			}
-		}
-		if text, ok := ecs.GetMut[ui.Text](world, menu.Items[i]); ok {
-			text.Color[3] = textAlpha
-		}
-	}
+	ui.SetVisible(world, menu.Panel, visible)
 }
 
 func (c *HudContext) refreshHudLayout() {

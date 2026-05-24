@@ -101,38 +101,13 @@ func main() {
 		last = now
 
 		drainPendingDrops(worlds, renderer)
-		drainKhronosPending(worlds, renderer)
-		syncUiPointer(worlds)
-		ctx := newHudContext(worlds)
-		ctx.refreshHudLayout()
-		ctx.updateTreeScroll()
-
-		app.TickFrame(worlds, demo, delta)
-		handleRightClick(worlds)
-		driveTextInputs(worlds)
-		handleUiClicks(worlds)
-		ctx.refreshFps()
-		ctx.refreshModeButtons()
-		ctx.refreshMenuPopups()
-		ctx.refreshInteractiveHovers()
-		ctx.refreshEntityTree()
-		ctx.refreshInspector()
-		ctx.updateInspectorCaret()
-		ctx.refreshKhronosBrowser()
+		updateEditorFrame(worlds, renderer, demo, delta)
 
 		if err := render.RenderFrame(renderer, worlds.Engine); err != nil {
 			js.Global().Get("console").Call("error", "render error: "+err.Error())
 		}
 
-		pass.ProcessPickingReadback(renderer, worlds.Engine)
-
-		if picking := ecs.MustResource[*pass.Picking](worlds.Engine); (*picking).Result != nil {
-			result := (*picking).Result
-			(*picking).Result = nil
-			handlePickResult(worlds, result.EntityID)
-		}
-
-		app.PostFrame(worlds)
+		finishEditorFrame(worlds, renderer)
 
 		js.Global().Call("requestAnimationFrame", frame)
 		return nil
