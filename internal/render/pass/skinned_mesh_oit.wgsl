@@ -135,6 +135,21 @@ struct Material {
     metallic_roughness_transform: TextureTransform,
     occlusion_transform:          TextureTransform,
     emissive_transform:           TextureTransform,
+
+    transmission_transform:              TextureTransform,
+    thickness_transform:                 TextureTransform,
+    specular_transform:                  TextureTransform,
+    specular_color_transform:            TextureTransform,
+    clearcoat_transform:                 TextureTransform,
+    clearcoat_roughness_transform:       TextureTransform,
+    clearcoat_normal_transform:          TextureTransform,
+    sheen_color_transform:               TextureTransform,
+    sheen_roughness_transform:           TextureTransform,
+    iridescence_transform:               TextureTransform,
+    iridescence_thickness_transform:     TextureTransform,
+    anisotropy_transform:                TextureTransform,
+    diffuse_transmission_transform:      TextureTransform,
+    diffuse_transmission_color_transform: TextureTransform,
 };
 
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
@@ -1000,11 +1015,11 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
 
     var specular_color = mat.specular_color_factor;
     if (mat.specular_color_layer != NO_LAYER) {
-        specular_color = specular_color * sample_srgb_layer(mat.specular_color_layer, in.uv).rgb;
+        specular_color = specular_color * sample_srgb_layer(mat.specular_color_layer, texture_uv(in.uv, mat.specular_color_transform)).rgb;
     }
     var specular_strength = mat.specular_factor;
     if (mat.specular_layer != NO_LAYER) {
-        specular_strength = specular_strength * sample_linear_layer(mat.specular_layer, in.uv).a;
+        specular_strength = specular_strength * sample_linear_layer(mat.specular_layer, texture_uv(in.uv, mat.specular_transform)).a;
     }
     let dielectric_f0 = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);
     let dielectric_specular_f0 = min(vec3<f32>(dielectric_f0) * specular_color, vec3<f32>(1.0));
@@ -1013,11 +1028,11 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     if (mat.iridescence_factor > 0.0) {
         var irid_factor = mat.iridescence_factor;
         if (mat.iridescence_layer != NO_LAYER) {
-            irid_factor = irid_factor * sample_linear_layer(mat.iridescence_layer, in.uv).r;
+            irid_factor = irid_factor * sample_linear_layer(mat.iridescence_layer, texture_uv(in.uv, mat.iridescence_transform)).r;
         }
         var irid_thickness = mat.iridescence_thickness_max;
         if (mat.iridescence_thickness_layer != NO_LAYER) {
-            let t = sample_linear_layer(mat.iridescence_thickness_layer, in.uv).g;
+            let t = sample_linear_layer(mat.iridescence_thickness_layer, texture_uv(in.uv, mat.iridescence_thickness_transform)).g;
             irid_thickness = mix(mat.iridescence_thickness_min, mat.iridescence_thickness_max, t);
         }
         if (irid_factor > 0.0 && irid_thickness > 0.0) {
@@ -1030,7 +1045,7 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     shade.aniso_strength = mat.anisotropy_strength;
     var aniso_dir = vec2<f32>(mat.anisotropy_rotation_cos, mat.anisotropy_rotation_sin);
     if (mat.anisotropy_layer != NO_LAYER) {
-        let a = sample_linear_layer(mat.anisotropy_layer, in.uv);
+        let a = sample_linear_layer(mat.anisotropy_layer, texture_uv(in.uv, mat.anisotropy_transform));
         let td = a.xy * 2.0 - 1.0;
         aniso_dir = vec2<f32>(
             mat.anisotropy_rotation_cos * td.x - mat.anisotropy_rotation_sin * td.y,
@@ -1044,11 +1059,11 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
 
     var sheen_color = mat.sheen_color_factor;
     if (mat.sheen_color_layer != NO_LAYER) {
-        sheen_color = sheen_color * sample_srgb_layer(mat.sheen_color_layer, in.uv).rgb;
+        sheen_color = sheen_color * sample_srgb_layer(mat.sheen_color_layer, texture_uv(in.uv, mat.sheen_color_transform)).rgb;
     }
     var sheen_rough = clamp(mat.sheen_roughness_factor, 0.07, 1.0);
     if (mat.sheen_roughness_layer != NO_LAYER) {
-        sheen_rough = sheen_rough * sample_linear_layer(mat.sheen_roughness_layer, in.uv).a;
+        sheen_rough = sheen_rough * sample_linear_layer(mat.sheen_roughness_layer, texture_uv(in.uv, mat.sheen_roughness_transform)).a;
     }
     shade.sheen_color = sheen_color;
     shade.sheen_roughness = sheen_rough;
@@ -1058,15 +1073,15 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
 
     var cc_factor = mat.clearcoat_factor;
     if (mat.clearcoat_layer != NO_LAYER) {
-        cc_factor = cc_factor * sample_linear_layer(mat.clearcoat_layer, in.uv).r;
+        cc_factor = cc_factor * sample_linear_layer(mat.clearcoat_layer, texture_uv(in.uv, mat.clearcoat_transform)).r;
     }
     var cc_roughness = clamp(mat.clearcoat_roughness_factor, 0.04, 1.0);
     if (mat.clearcoat_roughness_layer != NO_LAYER) {
-        cc_roughness = cc_roughness * sample_linear_layer(mat.clearcoat_roughness_layer, in.uv).g;
+        cc_roughness = cc_roughness * sample_linear_layer(mat.clearcoat_roughness_layer, texture_uv(in.uv, mat.clearcoat_roughness_transform)).g;
     }
     var cc_normal = n;
     if (mat.clearcoat_normal_layer != NO_LAYER) {
-        let cc_n_sample = sample_linear_layer(mat.clearcoat_normal_layer, in.uv).xyz;
+        let cc_n_sample = sample_linear_layer(mat.clearcoat_normal_layer, texture_uv(in.uv, mat.clearcoat_normal_transform)).xyz;
         let cc_n_tangent_xy = (cc_n_sample.xy * 2.0 - 1.0) * mat.clearcoat_normal_scale;
         let cc_n_tangent = vec3<f32>(cc_n_tangent_xy, sqrt(max(1.0 - dot(cc_n_tangent_xy, cc_n_tangent_xy), 0.0)));
         let cc_t = normalize(in.world_tangent.xyz);
@@ -1130,7 +1145,7 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
         var dt_factor = mat.diffuse_transmission_factor;
         var dt_color = mat.diffuse_transmission_color_factor;
         if (mat.diffuse_transmission_color_layer != NO_LAYER) {
-            dt_color = dt_color * sample_srgb_layer(mat.diffuse_transmission_color_layer, in.uv).rgb;
+            dt_color = dt_color * sample_srgb_layer(mat.diffuse_transmission_color_layer, texture_uv(in.uv, mat.diffuse_transmission_color_transform)).rgb;
         }
         let back_irradiance = textureSampleLevel(irradiance_map, ibl_sampler, -n, 0.0).rgb;
         let c_diff_back = dt_color * albedo * (1.0 - metallic);
@@ -1141,7 +1156,7 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     if (mat.transmission_factor > 0.0) {
         var trans = mat.transmission_factor;
         if (mat.transmission_layer != NO_LAYER) {
-            trans = trans * sample_linear_layer(mat.transmission_layer, in.uv).r;
+            trans = trans * sample_linear_layer(mat.transmission_layer, texture_uv(in.uv, mat.transmission_transform)).r;
         }
         let transmission = get_ibl_volume_refraction(
             n, v, in.world_pos, roughness, albedo, f0, mat.ior, mat.dispersion,
@@ -1158,11 +1173,11 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     if (mat.clearcoat_factor > 0.0) {
         var cc = mat.clearcoat_factor;
         if (mat.clearcoat_layer != NO_LAYER) {
-            cc = cc * sample_linear_layer(mat.clearcoat_layer, in.uv).r;
+            cc = cc * sample_linear_layer(mat.clearcoat_layer, texture_uv(in.uv, mat.clearcoat_transform)).r;
         }
         var cc_rough = clamp(mat.clearcoat_roughness_factor, 0.04, 1.0);
         if (mat.clearcoat_roughness_layer != NO_LAYER) {
-            cc_rough = cc_rough * sample_linear_layer(mat.clearcoat_roughness_layer, in.uv).g;
+            cc_rough = cc_rough * sample_linear_layer(mat.clearcoat_roughness_layer, texture_uv(in.uv, mat.clearcoat_roughness_transform)).g;
         }
         let cc_n_dot_v = max(dot(cc_normal, v), 0.0);
         let cc_r = reflect(-v, cc_normal);

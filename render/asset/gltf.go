@@ -937,7 +937,9 @@ func buildMaterial(src *gltf.Material, textureLayers []uint32) Material {
 }
 
 type extTexInfo struct {
-	Index *uint32 `json:"index"`
+	Index      *uint32                    `json:"index"`
+	TexCoord   *uint32                    `json:"texCoord"`
+	Extensions map[string]json.RawMessage `json:"extensions"`
 }
 
 func extLayer(info *extTexInfo, layers []uint32) uint32 {
@@ -945,6 +947,45 @@ func extLayer(info *extTexInfo, layers []uint32) uint32 {
 		return NoTextureLayer
 	}
 	return layers[*info.Index]
+}
+
+func extTexTransform(info *extTexInfo) TextureTransform {
+	transform := IdentityTextureTransform()
+	if info == nil {
+		return transform
+	}
+	if info.TexCoord != nil {
+		transform.UVSet = *info.TexCoord
+	}
+	if info.Extensions == nil {
+		return transform
+	}
+	raw, ok := info.Extensions["KHR_texture_transform"]
+	if !ok {
+		return transform
+	}
+	var decoded struct {
+		Offset   *[2]float32 `json:"offset"`
+		Rotation *float32    `json:"rotation"`
+		Scale    *[2]float32 `json:"scale"`
+		TexCoord *uint32     `json:"texCoord"`
+	}
+	if json.Unmarshal(raw, &decoded) != nil {
+		return transform
+	}
+	if decoded.Offset != nil {
+		transform.Offset = *decoded.Offset
+	}
+	if decoded.Rotation != nil {
+		transform.Rotation = *decoded.Rotation
+	}
+	if decoded.Scale != nil {
+		transform.Scale = *decoded.Scale
+	}
+	if decoded.TexCoord != nil {
+		transform.UVSet = *decoded.TexCoord
+	}
+	return transform
 }
 
 func readTexTransform(ext gltf.Extensions) TextureTransform {
@@ -1025,6 +1066,8 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 		}
 		out.SpecularLayer = extLayer(spec.SpecularTexture, layers)
 		out.SpecularColorLayer = extLayer(spec.SpecularColorTexture, layers)
+		out.SpecularTransform = extTexTransform(spec.SpecularTexture)
+		out.SpecularColorTransform = extTexTransform(spec.SpecularColorTexture)
 	}
 
 	var trans struct {
@@ -1036,6 +1079,7 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 			out.TransmissionFactor = *trans.TransmissionFactor
 		}
 		out.TransmissionLayer = extLayer(trans.TransmissionTexture, layers)
+		out.TransmissionTransform = extTexTransform(trans.TransmissionTexture)
 	}
 
 	var vol struct {
@@ -1055,6 +1099,7 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 			out.AttenuationDistance = *vol.AttenuationDistance
 		}
 		out.ThicknessLayer = extLayer(vol.ThicknessTexture, layers)
+		out.ThicknessTransform = extTexTransform(vol.ThicknessTexture)
 	}
 
 	var disp struct {
@@ -1077,6 +1122,7 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 			out.AnisotropyRotation = *aniso.AnisotropyRotation
 		}
 		out.AnisotropyLayer = extLayer(aniso.AnisotropyTexture, layers)
+		out.AnisotropyTransform = extTexTransform(aniso.AnisotropyTexture)
 	}
 
 	var cc struct {
@@ -1085,7 +1131,7 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 		ClearcoatTexture          *extTexInfo `json:"clearcoatTexture"`
 		ClearcoatRoughnessTexture *extTexInfo `json:"clearcoatRoughnessTexture"`
 		ClearcoatNormalTexture    *struct {
-			Index *uint32  `json:"index"`
+			extTexInfo
 			Scale *float32 `json:"scale"`
 		} `json:"clearcoatNormalTexture"`
 	}
@@ -1098,10 +1144,11 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 		}
 		out.ClearcoatLayer = extLayer(cc.ClearcoatTexture, layers)
 		out.ClearcoatRoughnessLayer = extLayer(cc.ClearcoatRoughnessTexture, layers)
+		out.ClearcoatTransform = extTexTransform(cc.ClearcoatTexture)
+		out.ClearcoatRoughnessTransform = extTexTransform(cc.ClearcoatRoughnessTexture)
 		if cc.ClearcoatNormalTexture != nil {
-			if cc.ClearcoatNormalTexture.Index != nil && int(*cc.ClearcoatNormalTexture.Index) < len(layers) {
-				out.ClearcoatNormalLayer = layers[*cc.ClearcoatNormalTexture.Index]
-			}
+			out.ClearcoatNormalLayer = extLayer(&cc.ClearcoatNormalTexture.extTexInfo, layers)
+			out.ClearcoatNormalTransform = extTexTransform(&cc.ClearcoatNormalTexture.extTexInfo)
 			if cc.ClearcoatNormalTexture.Scale != nil {
 				out.ClearcoatNormalScale = *cc.ClearcoatNormalTexture.Scale
 			}
@@ -1123,6 +1170,8 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 		}
 		out.SheenColorLayer = extLayer(sheen.SheenColorTexture, layers)
 		out.SheenRoughnessLayer = extLayer(sheen.SheenRoughnessTexture, layers)
+		out.SheenColorTransform = extTexTransform(sheen.SheenColorTexture)
+		out.SheenRoughnessTransform = extTexTransform(sheen.SheenRoughnessTexture)
 	}
 
 	var irid struct {
@@ -1148,6 +1197,8 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 		}
 		out.IridescenceLayer = extLayer(irid.IridescenceTexture, layers)
 		out.IridescenceThicknessLayer = extLayer(irid.IridescenceThicknessTexture, layers)
+		out.IridescenceTransform = extTexTransform(irid.IridescenceTexture)
+		out.IridescenceThicknessTransform = extTexTransform(irid.IridescenceThicknessTexture)
 	}
 
 	var difftrans struct {
@@ -1163,6 +1214,7 @@ func readMaterialExtensions(ext gltf.Extensions, out *Material, layers []uint32)
 			out.DiffuseTransmissionColorFactor = *difftrans.DiffuseTransmissionColorFactor
 		}
 		out.DiffuseTransmissionColorLayer = extLayer(difftrans.DiffuseTransmissionColorTexture, layers)
+		out.DiffuseTransmissionColorTransform = extTexTransform(difftrans.DiffuseTransmissionColorTexture)
 	}
 }
 

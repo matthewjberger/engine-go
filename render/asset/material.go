@@ -68,6 +68,21 @@ type Material struct {
 	OcclusionTransform         TextureTransform
 	EmissiveTransform          TextureTransform
 
+	TransmissionTransform             TextureTransform
+	ThicknessTransform                TextureTransform
+	SpecularTransform                 TextureTransform
+	SpecularColorTransform            TextureTransform
+	ClearcoatTransform                TextureTransform
+	ClearcoatRoughnessTransform       TextureTransform
+	ClearcoatNormalTransform          TextureTransform
+	SheenColorTransform               TextureTransform
+	SheenRoughnessTransform           TextureTransform
+	IridescenceTransform              TextureTransform
+	IridescenceThicknessTransform     TextureTransform
+	AnisotropyTransform               TextureTransform
+	DiffuseTransmissionTransform      TextureTransform
+	DiffuseTransmissionColorTransform TextureTransform
+
 	SpecularFactor      float32
 	SpecularColorFactor [3]float32
 	SpecularLayer       uint32
@@ -132,6 +147,21 @@ func DefaultMaterial() Material {
 		MetallicRoughnessTransform: IdentityTextureTransform(),
 		OcclusionTransform:         IdentityTextureTransform(),
 		EmissiveTransform:          IdentityTextureTransform(),
+
+		TransmissionTransform:             IdentityTextureTransform(),
+		ThicknessTransform:                IdentityTextureTransform(),
+		SpecularTransform:                 IdentityTextureTransform(),
+		SpecularColorTransform:            IdentityTextureTransform(),
+		ClearcoatTransform:                IdentityTextureTransform(),
+		ClearcoatRoughnessTransform:       IdentityTextureTransform(),
+		ClearcoatNormalTransform:          IdentityTextureTransform(),
+		SheenColorTransform:               IdentityTextureTransform(),
+		SheenRoughnessTransform:           IdentityTextureTransform(),
+		IridescenceTransform:              IdentityTextureTransform(),
+		IridescenceThicknessTransform:     IdentityTextureTransform(),
+		AnisotropyTransform:               IdentityTextureTransform(),
+		DiffuseTransmissionTransform:      IdentityTextureTransform(),
+		DiffuseTransmissionColorTransform: IdentityTextureTransform(),
 
 		SpecularFactor:      1.0,
 		SpecularColorFactor: [3]float32{1, 1, 1},
@@ -263,9 +293,24 @@ type MaterialGPU struct {
 	MetallicRoughnessTransform texTransformGPU
 	OcclusionTransform         texTransformGPU
 	EmissiveTransform          texTransformGPU
+
+	TransmissionTransform             texTransformGPU
+	ThicknessTransform                texTransformGPU
+	SpecularTransform                 texTransformGPU
+	SpecularColorTransform            texTransformGPU
+	ClearcoatTransform                texTransformGPU
+	ClearcoatRoughnessTransform       texTransformGPU
+	ClearcoatNormalTransform          texTransformGPU
+	SheenColorTransform               texTransformGPU
+	SheenRoughnessTransform           texTransformGPU
+	IridescenceTransform              texTransformGPU
+	IridescenceThicknessTransform     texTransformGPU
+	AnisotropyTransform               texTransformGPU
+	DiffuseTransmissionTransform      texTransformGPU
+	DiffuseTransmissionColorTransform texTransformGPU
 }
 
-const MaterialGPUSize = uint64(432)
+const MaterialGPUSize = uint64(880)
 
 type _ [uintptr(MaterialGPUSize) - unsafe.Sizeof(MaterialGPU{})]byte
 type _ [unsafe.Sizeof(MaterialGPU{}) - uintptr(MaterialGPUSize)]byte
@@ -303,6 +348,20 @@ func (m Material) ToGPU() MaterialGPU {
 	mrRow0, mrRow1 := m.MetallicRoughnessTransform.packed()
 	occRow0, occRow1 := m.OcclusionTransform.packed()
 	emiRow0, emiRow1 := m.EmissiveTransform.packed()
+	transmissionRow0, transmissionRow1 := m.TransmissionTransform.packed()
+	thicknessRow0, thicknessRow1 := m.ThicknessTransform.packed()
+	specularRow0, specularRow1 := m.SpecularTransform.packed()
+	specularColorRow0, specularColorRow1 := m.SpecularColorTransform.packed()
+	clearcoatRow0, clearcoatRow1 := m.ClearcoatTransform.packed()
+	clearcoatRoughnessRow0, clearcoatRoughnessRow1 := m.ClearcoatRoughnessTransform.packed()
+	clearcoatNormalRow0, clearcoatNormalRow1 := m.ClearcoatNormalTransform.packed()
+	sheenColorRow0, sheenColorRow1 := m.SheenColorTransform.packed()
+	sheenRoughnessRow0, sheenRoughnessRow1 := m.SheenRoughnessTransform.packed()
+	iridescenceRow0, iridescenceRow1 := m.IridescenceTransform.packed()
+	iridescenceThicknessRow0, iridescenceThicknessRow1 := m.IridescenceThicknessTransform.packed()
+	anisotropyRow0, anisotropyRow1 := m.AnisotropyTransform.packed()
+	diffuseTransmissionRow0, diffuseTransmissionRow1 := m.DiffuseTransmissionTransform.packed()
+	diffuseTransmissionColorRow0, diffuseTransmissionColorRow1 := m.DiffuseTransmissionColorTransform.packed()
 
 	return MaterialGPU{
 		BaseColor:              m.BaseColor,
@@ -371,5 +430,20 @@ func (m Material) ToGPU() MaterialGPU {
 		MetallicRoughnessTransform: texTransformGPU{Row0: mrRow0, Row1: mrRow1},
 		OcclusionTransform:         texTransformGPU{Row0: occRow0, Row1: occRow1},
 		EmissiveTransform:          texTransformGPU{Row0: emiRow0, Row1: emiRow1},
+
+		TransmissionTransform:             texTransformGPU{Row0: transmissionRow0, Row1: transmissionRow1},
+		ThicknessTransform:                texTransformGPU{Row0: thicknessRow0, Row1: thicknessRow1},
+		SpecularTransform:                 texTransformGPU{Row0: specularRow0, Row1: specularRow1},
+		SpecularColorTransform:            texTransformGPU{Row0: specularColorRow0, Row1: specularColorRow1},
+		ClearcoatTransform:                texTransformGPU{Row0: clearcoatRow0, Row1: clearcoatRow1},
+		ClearcoatRoughnessTransform:       texTransformGPU{Row0: clearcoatRoughnessRow0, Row1: clearcoatRoughnessRow1},
+		ClearcoatNormalTransform:          texTransformGPU{Row0: clearcoatNormalRow0, Row1: clearcoatNormalRow1},
+		SheenColorTransform:               texTransformGPU{Row0: sheenColorRow0, Row1: sheenColorRow1},
+		SheenRoughnessTransform:           texTransformGPU{Row0: sheenRoughnessRow0, Row1: sheenRoughnessRow1},
+		IridescenceTransform:              texTransformGPU{Row0: iridescenceRow0, Row1: iridescenceRow1},
+		IridescenceThicknessTransform:     texTransformGPU{Row0: iridescenceThicknessRow0, Row1: iridescenceThicknessRow1},
+		AnisotropyTransform:               texTransformGPU{Row0: anisotropyRow0, Row1: anisotropyRow1},
+		DiffuseTransmissionTransform:      texTransformGPU{Row0: diffuseTransmissionRow0, Row1: diffuseTransmissionRow1},
+		DiffuseTransmissionColorTransform: texTransformGPU{Row0: diffuseTransmissionColorRow0, Row1: diffuseTransmissionColorRow1},
 	}
 }
