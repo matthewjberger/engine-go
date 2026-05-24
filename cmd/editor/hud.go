@@ -257,24 +257,27 @@ func (c *HudContext) syncInspectorName(name string, editing bool) {
 }
 
 func (c *HudContext) updateInspectorCaret() {
-	editing := c.Pointer.FocusedEntity == c.Hud.InspectorName
-	caretColor, ok := ecs.GetMut[ui.Color](c.UI, c.Hud.InspectorCaret)
+	c.updateCaret(c.Hud.InspectorName, c.Hud.InspectorCaret)
+}
+
+func (c *HudContext) updateCaret(fieldEntity, caretEntity ecs.Entity) {
+	caretColor, ok := ecs.GetMut[ui.Color](c.UI, caretEntity)
 	if !ok {
 		return
 	}
-	if !editing {
+	if c.Pointer.FocusedEntity != fieldEntity {
 		caretColor.RGBA[3] = 0
 		return
 	}
-	field, ok := ecs.Get[ui.Node](c.UI, c.Hud.InspectorName)
+	field, ok := ecs.Get[ui.Node](c.UI, fieldEntity)
 	if !ok {
 		return
 	}
-	ti, ok := ecs.Get[ui.TextInput](c.UI, c.Hud.InspectorName)
+	ti, ok := ecs.Get[ui.TextInput](c.UI, fieldEntity)
 	if !ok {
 		return
 	}
-	label, ok := ecs.Get[ui.Text](c.UI, c.Hud.InspectorName)
+	label, ok := ecs.Get[ui.Text](c.UI, fieldEntity)
 	if !ok {
 		return
 	}
@@ -294,7 +297,7 @@ func (c *HudContext) updateInspectorCaret() {
 	caretX := originX + float32(caret)*advance
 	caretY := field.Resolved.Y + (field.Resolved.Height-glyphH)*0.5
 
-	caretNode, ok := ecs.GetMut[ui.Node](c.UI, c.Hud.InspectorCaret)
+	caretNode, ok := ecs.GetMut[ui.Node](c.UI, caretEntity)
 	if !ok {
 		return
 	}

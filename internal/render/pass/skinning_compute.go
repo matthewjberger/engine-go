@@ -32,7 +32,23 @@ type SkinnedInstance struct {
 	JointOffset uint32
 	BaseLayer   uint32
 	AlphaMode   uint32
+
+	TransmissionFactor  float32
+	IOR                 float32
+	RoughnessFactor     float32
+	MetallicFactor      float32
+	Dispersion          float32
+	Thickness           float32
+	AttenuationDistance float32
+	Pad0                float32
+	AttenuationColor    [3]float32
+	Pad1                float32
 }
+
+const skinnedInstanceSize = uintptr(80)
+
+type _ [skinnedInstanceSize - unsafe.Sizeof(SkinnedInstance{})]byte
+type _ [unsafe.Sizeof(SkinnedInstance{}) - skinnedInstanceSize]byte
 
 type SkinnedDrawGroup struct {
 	Mesh          asset.SkinnedMeshHandle
@@ -367,10 +383,21 @@ func (sc *SkinningCompute) buildInstances(world *ecs.World) {
 			JointOffset: sc.JointOffset(entity),
 			BaseLayer:   0xFFFFFFFF,
 		}
+		instance.IOR = 1.5
 		if material, ok := ecs.Get[asset.Material](world, entity); ok && material != nil {
 			instance.BaseColor = material.BaseColor
 			instance.BaseLayer = material.BaseColorLayer
 			instance.AlphaMode = uint32(material.ToGPU().AlphaMode)
+			instance.TransmissionFactor = material.TransmissionFactor
+			if material.IOR > 0 {
+				instance.IOR = material.IOR
+			}
+			instance.RoughnessFactor = material.RoughnessFactor
+			instance.MetallicFactor = material.MetallicFactor
+			instance.Dispersion = material.Dispersion
+			instance.Thickness = material.Thickness
+			instance.AttenuationDistance = material.AttenuationDistance
+			instance.AttenuationColor = material.AttenuationColor
 		}
 		records = append(records, record{instance: instance, mesh: sm.Mesh, transparent: instance.AlphaMode == 2})
 	})

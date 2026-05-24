@@ -113,9 +113,8 @@ Reading the file tells you what runs each frame, in what order, without inheriti
 
 The engine deliberately stays narrow in places it could grow:
 
-- The mesh pass currently binds one base-color texture per mesh handle. Multi-material glTF meshes lose their normal / metallic-roughness textures at draw time even though the loader captured them. A future PBR pass picks the slack back up.
-- Animation data is captured by the glTF loader but no system samples it yet. `AnimationClip` and `AnimationChannel` data sit on `LoadedScene.Animations` waiting for an `AnimationPlayer` component + system.
 - Transient textures aren't aliased. Each transient is its own GPU texture today. A pooling layer would save memory on large graphs but isn't load-bearing for the size of graphs the engine runs.
-- There's no skinning or tangent generation. Meshes that ship with TANGENT attributes pass through; meshes without one don't get an auto-generated tangent basis. A normal-mapped shader needs that work first.
+- There's no tangent generation. The glTF loader reads a primitive's TANGENT attribute when it has one and otherwise falls back to a constant tangent, so normal maps on meshes authored without tangents render wrong until the asset is reexported with them.
+- Skins are capped at 128 joints (`MaxJointsPerSkin`). A skin that needs more is rejected when its `Skin` is constructed rather than silently truncated.
 
 These are scope decisions, not regressions. The point of writing them down is so the engine's shape stays honest about what it does and doesn't promise.

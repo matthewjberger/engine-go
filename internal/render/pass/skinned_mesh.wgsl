@@ -21,6 +21,16 @@ struct SkinnedInstance {
     joint_offset: u32,
     base_layer:   u32,
     alpha_mode:   u32,
+    transmission_factor:  f32,
+    ior:                  f32,
+    roughness_factor:     f32,
+    metallic_factor:      f32,
+    dispersion:           f32,
+    thickness:            f32,
+    attenuation_distance: f32,
+    _pad0:                f32,
+    attenuation_color:    vec3<f32>,
+    _pad1:                f32,
 };
 
 @group(2) @binding(0) var<storage, read> joint_matrices: array<mat4x4<f32>>;

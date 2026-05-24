@@ -32,6 +32,7 @@ type khronosHandles struct {
 	Panel       ecs.Entity
 	Title       ecs.Entity
 	SearchField ecs.Entity
+	SearchCaret ecs.Entity
 	StatusLabel ecs.Entity
 	Scroll      ui.ScrollArea
 	Rows        []ecs.Entity
@@ -64,6 +65,13 @@ func buildKhronosPanel(b *ui.Builder) khronosHandles {
 		Interactive().
 		Text(ui.Text{Content: "", Color: khronosRowColor, Scale: 1.4}).Entity()
 	ecs.Set(b.World(), h.SearchField, ui.TextInput{})
+	b.Push(h.SearchField)
+	h.SearchCaret = b.Node(ui.Node{
+		X: 0, Y: 0, Width: 2, Height: 14,
+		Anchor: ui.AnchorTopLeft,
+		ZIndex: khronosContentZ + 10,
+	}).Color(ui.Color{RGBA: [4]float32{0, 0, 0, 0}}).Entity()
+	b.Pop()
 
 	h.StatusLabel = b.Node(ui.Node{Width: contentWidth, Height: 18, ZIndex: khronosContentZ}).
 		Text(ui.Text{Content: "", Color: khronosStatusColor, Scale: 1.3}).Entity()
@@ -80,6 +88,8 @@ func (c *HudContext) refreshKhronosBrowser() {
 	if !c.Hud.KhronosOpen {
 		return
 	}
+
+	c.updateCaret(h.SearchField, h.SearchCaret)
 
 	browser := *ecs.MustResource[*KhronosBrowser](c.Engine)
 	browser.EnsureLoaded()
