@@ -42,18 +42,6 @@ func UpdateAnimationPlayers(world *ecs.World) {
 	}
 	delta := w.Timing.DeltaSeconds
 
-	jointSet := make(map[ecs.Entity]struct{}, 64)
-	skinMask := ecs.MustMaskOf[SkinnedMesh](world)
-	world.ForEach(skinMask, 0, func(entity ecs.Entity, _ *ecs.Archetype, _ int) {
-		skinned, _ := ecs.Get[SkinnedMesh](world, entity)
-		if skinned == nil || skinned.Skin == nil {
-			return
-		}
-		for _, joint := range skinned.Skin.Joints {
-			jointSet[joint] = struct{}{}
-		}
-	})
-
 	var dirty []ecs.Entity
 	seen := make(map[ecs.Entity]struct{}, 16)
 
@@ -62,7 +50,7 @@ func UpdateAnimationPlayers(world *ecs.World) {
 		players, _ := ecs.Column[AnimationPlayer](world, table)
 		p := &players[index]
 		advancePlayer(p, delta)
-		applyPlayer(world, p, jointSet, func(target ecs.Entity) {
+		applyPlayer(world, p, func(target ecs.Entity) {
 			if _, ok := seen[target]; ok {
 				return
 			}
@@ -96,7 +84,7 @@ func advancePlayer(p *AnimationPlayer, delta float32) {
 	}
 }
 
-func applyPlayer(world *ecs.World, p *AnimationPlayer, jointSet map[ecs.Entity]struct{}, markDirty func(ecs.Entity)) {
+func applyPlayer(world *ecs.World, p *AnimationPlayer, markDirty func(ecs.Entity)) {
 	if p.CurrentClip < 0 || p.CurrentClip >= len(p.Clips) {
 		return
 	}
@@ -105,9 +93,6 @@ func applyPlayer(world *ecs.World, p *AnimationPlayer, jointSet map[ecs.Entity]s
 		channel := &clip.Channels[i]
 		target, ok := p.NodeIndexToEntity[channel.TargetNode]
 		if !ok {
-			continue
-		}
-		if _, isJoint := jointSet[target]; isJoint {
 			continue
 		}
 		if sampleChannelInto(world, target, channel, p.Time) {
