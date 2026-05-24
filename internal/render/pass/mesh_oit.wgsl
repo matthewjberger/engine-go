@@ -102,10 +102,6 @@ fn oit_weight(view_z: f32, a: f32) -> f32 {
 
 @fragment
 fn fragment_main(in: VertexOutput) -> OitOutput {
-
-    let ddx_uv = dpdx(in.uv);
-    let ddy_uv = dpdy(in.uv);
-
     let mat = materials[in.material_index];
     if (mat.alpha_mode != 2u) {
         discard;
@@ -114,7 +110,7 @@ fn fragment_main(in: VertexOutput) -> OitOutput {
     var base_color = mat.base_color * in.color;
     if (mat.base_layer != NO_TEXTURE_LAYER) {
         let layer = i32(mat.base_layer & 0xFFFFu);
-        base_color = base_color * textureSampleGrad(material_srgb_array, material_sampler, in.uv, layer, ddx_uv, ddy_uv);
+        base_color = base_color * textureSampleLevel(material_srgb_array, material_sampler, in.uv, layer, 0.0);
     }
 
     var albedo = base_color.rgb;

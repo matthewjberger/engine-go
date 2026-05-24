@@ -261,16 +261,16 @@ fn apply_wrap(uv: vec2<f32>, packed: u32) -> vec2<f32> {
     return vec2<f32>(apply_wrap_axis(uv.x, mode_u), apply_wrap_axis(uv.y, mode_v));
 }
 
-fn sample_srgb_layer(packed: u32, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> vec4<f32> {
+fn sample_srgb_layer(packed: u32, uv: vec2<f32>) -> vec4<f32> {
     let layer = i32(packed & 0xFFFFu);
     let wrapped = apply_wrap(uv, packed);
-    return textureSampleGrad(material_srgb_array, material_sampler, wrapped, layer, ddx, ddy);
+    return textureSampleLevel(material_srgb_array, material_sampler, wrapped, layer, 0.0);
 }
 
-fn sample_linear_layer(packed: u32, uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> vec4<f32> {
+fn sample_linear_layer(packed: u32, uv: vec2<f32>) -> vec4<f32> {
     let layer = i32(packed & 0xFFFFu);
     let wrapped = apply_wrap(uv, packed);
-    return textureSampleGrad(material_linear_array, material_sampler, wrapped, layer, ddx, ddy);
+    return textureSampleLevel(material_linear_array, material_sampler, wrapped, layer, 0.0);
 }
 
 fn distribution_ggx(n: vec3<f32>, h: vec3<f32>, roughness: f32) -> f32 {
@@ -584,9 +584,6 @@ fn vertex_main(input: VertexInput, @builtin(instance_index) instance_index: u32)
 fn fragment_main(in: VertexOutput) -> FragmentOutput {
     let mat = materials[in.material_index];
 
-    let uv_ddx = dpdx(in.uv);
-    let uv_ddy = dpdy(in.uv);
-
     let view_dir = normalize(cluster_uniforms.camera_position.xyz - in.world_pos);
 
     let derived_normal = normalize(cross(dpdx(in.world_pos), dpdy(in.world_pos)));
@@ -607,13 +604,13 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     var normal_sample = vec3<f32>(0.5, 0.5, 1.0);
     let has_normal_texture = mat.normal_layer != NO_LAYER;
     if (has_normal_texture) {
-        normal_sample = sample_linear_layer(mat.normal_layer, in.uv, uv_ddx, uv_ddy).xyz;
+        normal_sample = sample_linear_layer(mat.normal_layer, in.uv).xyz;
     }
     let normal = get_normal(geom_normal, geom_tangent, normal_sample, has_normal_texture, mat.normal_scale, 0u);
 
     var albedo_sample = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     if (mat.base_layer != NO_LAYER) {
-        albedo_sample = sample_srgb_layer(mat.base_layer, in.uv, uv_ddx, uv_ddy);
+        albedo_sample = sample_srgb_layer(mat.base_layer, in.uv);
     }
     let base_color = mat.base_color * albedo_sample * in.color;
     let albedo = base_color.rgb;
@@ -628,7 +625,7 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
     var metallic = mat.metallic_factor;
     var roughness = mat.roughness_factor;
     if (mat.metallic_roughness_layer != NO_LAYER) {
-        let mr = sample_linear_layer(mat.metallic_roughness_layer, in.uv, uv_ddx, uv_ddy);
+        let mr = sample_linear_layer(mat.metallic_roughness_layer, in.uv);
         roughness = roughness * mr.g;
         metallic = metallic * mr.b;
     }
@@ -637,12 +634,12 @@ fn fragment_main(in: VertexOutput) -> FragmentOutput {
 
     var occlusion = 1.0;
     if (mat.occlusion_layer != NO_LAYER) {
-        occlusion = sample_linear_layer(mat.occlusion_layer, in.uv, uv_ddx, uv_ddy).r;
+        occlusion = sample_linear_layer(mat.occlusion_layer, in.uv).r;
     }
 
     var emissive = mat.emissive_factor * mat.emissive_strength;
     if (mat.emissive_layer != NO_LAYER) {
-        emissive = emissive * sample_srgb_layer(mat.emissive_layer, in.uv, uv_ddx, uv_ddy).rgb;
+        emissive = emissive * sample_srgb_layer(mat.emissive_layer, in.uv).rgb;
     }
 
     if (mat.unlit != 0u) {
