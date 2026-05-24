@@ -9,15 +9,11 @@
 
 Archetype ECS, a wgpu-backed render graph with clustered lighting and image-based PBR, and a retained ECS-driven UI. Runs on GLFW on the desktop and on WebAssembly + canvas in the browser. Engine state lives as components on world entities, systems are plain `func(*ecs.World)` functions, and the renderer reads from the same world the simulation writes to.
 
-The editor and a breakout demo ship in this repository as the two end-to-end consumers.
+The editor ships in this repository as the end-to-end consumer.
 
 [![indigo editor](docs/editor.png)](https://matthewberger.dev/indigo/editor/)
 
 [Editor in the browser](https://matthewberger.dev/indigo/editor/) (WebGPU required).
-
-[![breakout](docs/breakout.png)](https://matthewberger.dev/indigo/breakout/)
-
-[Breakout in the browser](https://matthewberger.dev/indigo/breakout/).
 
 Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
