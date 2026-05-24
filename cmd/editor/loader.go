@@ -7,12 +7,14 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"testing/fstest"
 
 	"github.com/matthewjberger/indigo/app"
 	"github.com/matthewjberger/indigo/ecs"
 	"github.com/matthewjberger/indigo/render"
 	"github.com/matthewjberger/indigo/render/asset"
 	"github.com/matthewjberger/indigo/transform"
+	"github.com/matthewjberger/indigo/ui"
 )
 
 //go:embed assets/DamagedHelmet.glb
@@ -33,6 +35,43 @@ func loadGltfBytes(engine *ecs.World, renderer *render.Renderer, label string, d
 		return nil, err
 	}
 	return spawnLoadedSceneNamed(engine, renderer, scene, label)
+}
+
+// drainKhronosPending uploads and spawns any model the Khronos browser finished
+// downloading on a background goroutine. It must run on the main thread because
+// it touches the GPU device and queue.
+func drainKhronosPending(worlds app.Worlds, renderer *render.Renderer) {
+	browser := *ecs.MustResource[*KhronosBrowser](worlds.Engine)
+	pending := browser.TakePending()
+	if pending == nil {
+		return
+	}
+	if _, err := loadKhronosPending(worlds.Engine, renderer, pending); err != nil {
+		log.Printf("khronos load failed: %v", err)
+		return
+	}
+	if worlds.UI != nil {
+		ui.MarkLayoutDirty(worlds.UI)
+	}
+}
+
+func loadKhronosPending(engine *ecs.World, renderer *render.Renderer, pending *PendingKhronos) ([]ecs.Entity, error) {
+	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
+	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets
+	arrays := ecs.MustResource[asset.MaterialTextureArraysResource](engine).Arrays
+	opts := asset.LoadGltfOptions{Label: pending.DisplayName}
+	if len(pending.Resources) > 0 {
+		fsys := make(fstest.MapFS, len(pending.Resources))
+		for name, data := range pending.Resources {
+			fsys[name] = &fstest.MapFile{Data: data}
+		}
+		opts.FS = fsys
+	}
+	scene, err := asset.LoadGltfReaderOpts(renderer.Device, renderer.Queue, assets, skinnedAssets, arrays, bytes.NewReader(pending.GltfBytes), opts)
+	if err != nil {
+		return nil, err
+	}
+	return spawnLoadedSceneNamed(engine, renderer, scene, pending.DisplayName)
 }
 
 func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]ecs.Entity, error) {

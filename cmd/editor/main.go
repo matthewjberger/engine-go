@@ -80,6 +80,7 @@ func main() {
 		delta := float32(now.Sub(last).Seconds())
 		last = now
 
+		drainKhronosPending(worlds, renderer)
 		syncUiPointer(worlds)
 		ctx := newHudContext(worlds)
 		ctx.refreshHudLayout()
@@ -90,12 +91,14 @@ func main() {
 		handleRightClick(worlds)
 		driveTextInputs(worlds)
 		handleUiClicks(worlds)
+		ctx.refreshFps()
 		ctx.refreshModeButtons()
 		ctx.refreshMenuPopups()
 		ctx.refreshInteractiveHovers()
 		ctx.refreshEntityTree()
 		ctx.refreshInspector()
 		ctx.updateInspectorCaret()
+		ctx.refreshKhronosBrowser()
 
 		if ctx.Hud.RequestExit {
 			glfwWindow.SetShouldClose(true)

@@ -189,9 +189,14 @@ func handleUiClicks(worlds app.Worlds) {
 			hud.OpenMenu = toggleMenu(hud.OpenMenu, menuEditOpen)
 		case hud.ViewButton:
 			hud.OpenMenu = toggleMenu(hud.OpenMenu, menuViewOpen)
+		case hud.AssetsButton:
+			hud.OpenMenu = toggleMenu(hud.OpenMenu, menuAssetsOpen)
 		default:
 			if handleMenuItem(worlds, hud, evt.Entity) {
 				hud.OpenMenu = menuClosed
+				break
+			}
+			if handleKhronosRow(worlds, hud, evt.Entity) {
 				break
 			}
 			for i, row := range hud.TreeRows {
@@ -239,6 +244,15 @@ func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool 
 		}
 		return true
 	}
+	if idx := matchItem(hud.AssetsMenu, entity); idx >= 0 {
+		if idx == 0 {
+			hud.KhronosOpen = !hud.KhronosOpen
+			if hud.KhronosOpen {
+				(*ecs.MustResource[*KhronosBrowser](worlds.Engine)).EnsureLoaded()
+			}
+		}
+		return true
+	}
 	if idx := matchItem(hud.ViewMenu, entity); idx >= 0 {
 		switch idx {
 		case 0:
@@ -277,6 +291,25 @@ func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool 
 	return false
 }
 
+func handleKhronosRow(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool {
+	for i, row := range hud.Khronos.Rows {
+		if row != entity {
+			continue
+		}
+		entryIndex := hud.Khronos.RowToEntry[i]
+		if entryIndex < 0 {
+			return true
+		}
+		browser := *ecs.MustResource[*KhronosBrowser](worlds.Engine)
+		entries := browser.Entries()
+		if entryIndex < len(entries) {
+			browser.FetchEntry(entries[entryIndex])
+		}
+		return true
+	}
+	return false
+}
+
 func matchItem(menu menuPopup, entity ecs.Entity) int {
 	for i := 0; i < menu.Count; i++ {
 		if menu.Items[i] == entity {
@@ -297,6 +330,8 @@ func pointerOverMenuGeometry(uiWorld *ecs.World, hud *HudHandles) bool {
 		menu, button = hud.EditMenu, hud.EditButton
 	case menuViewOpen:
 		menu, button = hud.ViewMenu, hud.ViewButton
+	case menuAssetsOpen:
+		menu, button = hud.AssetsMenu, hud.AssetsButton
 	case menuContextOpen:
 		menu = hud.ContextMenu
 	default:

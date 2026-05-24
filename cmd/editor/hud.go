@@ -18,18 +18,19 @@ func (c *HudContext) refreshMenuPopups() {
 	setMenuVisible(c.UI, c.Hud.FileMenu, c.Hud.OpenMenu == menuFileOpen)
 	setMenuVisible(c.UI, c.Hud.EditMenu, c.Hud.OpenMenu == menuEditOpen)
 	setMenuVisible(c.UI, c.Hud.ViewMenu, c.Hud.OpenMenu == menuViewOpen)
+	setMenuVisible(c.UI, c.Hud.AssetsMenu, c.Hud.OpenMenu == menuAssetsOpen)
 	setMenuVisible(c.UI, c.Hud.ContextMenu, c.Hud.OpenMenu == menuContextOpen)
 }
 
 func (c *HudContext) refreshInteractiveHovers() {
 	idle := [4]float32{0.14, 0.16, 0.20, 1}
 	hover := [4]float32{0.32, 0.62, 0.98, 1}
-	for _, m := range []menuPopup{c.Hud.FileMenu, c.Hud.EditMenu, c.Hud.ViewMenu, c.Hud.ContextMenu} {
+	for _, m := range []menuPopup{c.Hud.FileMenu, c.Hud.EditMenu, c.Hud.ViewMenu, c.Hud.AssetsMenu, c.Hud.ContextMenu} {
 		for i := 0; i < m.Count; i++ {
 			paintHover(c.UI, m.Items[i], idle, hover)
 		}
 	}
-	for _, b := range []ecs.Entity{c.Hud.FileButton, c.Hud.EditButton, c.Hud.ViewButton} {
+	for _, b := range []ecs.Entity{c.Hud.FileButton, c.Hud.EditButton, c.Hud.ViewButton, c.Hud.AssetsButton} {
 		paintHover(c.UI, b, idle, hover)
 	}
 
@@ -117,6 +118,11 @@ func (c *HudContext) refreshHudLayout() {
 	if changed {
 		ui.MarkLayoutDirty(c.UI)
 	}
+}
+
+func (c *HudContext) refreshFps() {
+	fps := ecs.MustResource[window.Window](c.Engine).Timing.FramesPerSec
+	c.setText(c.Hud.FpsLabel, fmt.Sprintf("%.0f FPS", fps))
 }
 
 func (c *HudContext) refreshModeButtons() {

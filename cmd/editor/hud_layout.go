@@ -19,6 +19,7 @@ const (
 	menuEditOpen    = 2
 	menuViewOpen    = 3
 	menuContextOpen = 4
+	menuAssetsOpen  = 5
 )
 
 const menuPopupZ int32 = 100
@@ -31,16 +32,23 @@ type menuPopup struct {
 
 type HudHandles struct {
 	TopBar          ecs.Entity
+	FpsLabel        ecs.Entity
 	FileButton      ecs.Entity
 	EditButton      ecs.Entity
 	ViewButton      ecs.Entity
+	AssetsButton    ecs.Entity
 	TranslateButton ecs.Entity
 	RotateButton    ecs.Entity
 	ScaleButton     ecs.Entity
 
-	FileMenu menuPopup
-	EditMenu menuPopup
-	ViewMenu menuPopup
+	FileMenu   menuPopup
+	EditMenu   menuPopup
+	ViewMenu   menuPopup
+	AssetsMenu menuPopup
+
+	Khronos             khronosHandles
+	KhronosOpen         bool
+	KhronosScrollPixels float32
 
 	ContextMenu   menuPopup
 	ContextTarget ecs.Entity
@@ -81,9 +89,20 @@ func buildHud(world *ecs.World) HudHandles {
 		Anchor: ui.AnchorTopLeft,
 	}).Color(ui.Color{RGBA: [4]float32{0.08, 0.09, 0.12, 1}}).Entity()
 
+	h.FpsLabel = b.Node(ui.Node{
+		X: 0, Y: 0,
+		Width: 120, Height: hudTopBarHeight,
+		Anchor: ui.AnchorTopCenter,
+		ZIndex: 1,
+	}).Text(ui.Text{
+		Content: "",
+		Color:   [4]float32{0.6, 0.66, 0.78, 1},
+		Scale:   1.4,
+	}).Entity()
+
 	menuBar := b.Node(ui.Node{
 		X: 0, Y: 0,
-		Width: 280, Height: hudTopBarHeight,
+		Width: 360, Height: hudTopBarHeight,
 		Anchor:  ui.AnchorTopLeft,
 		Layout:  ui.LayoutRow,
 		Padding: 6, Spacing: 4,
@@ -92,6 +111,7 @@ func buildHud(world *ecs.World) HudHandles {
 	h.FileButton = buildMenuButton(b, "FILE")
 	h.EditButton = buildMenuButton(b, "EDIT")
 	h.ViewButton = buildMenuButton(b, "VIEW")
+	h.AssetsButton = buildMenuButton(b, "ASSETS")
 	b.Pop()
 
 	modeBar := b.Node(ui.Node{
@@ -181,8 +201,12 @@ func buildHud(world *ecs.World) HudHandles {
 		[]string{"UNDO", "REDO", "DESELECT"})
 	h.ViewMenu = buildMenuPopup(b, buttonOffset+2*buttonStride, hudTopBarHeight,
 		[]string{"RESET CAMERA", "TOGGLE GRID", "TOGGLE SKY", "TOGGLE BOUNDS", "TOGGLE NORMALS", "TOGGLE SKELETONS"})
+	h.AssetsMenu = buildMenuPopup(b, buttonOffset+3*buttonStride, hudTopBarHeight,
+		[]string{"KHRONOS SAMPLES"})
 	h.ContextMenu = buildMenuPopup(b, 0, 0,
 		[]string{"DELETE"})
+
+	h.Khronos = buildKhronosPanel(b)
 
 	return h
 }

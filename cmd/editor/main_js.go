@@ -101,6 +101,7 @@ func main() {
 		last = now
 
 		drainPendingDrops(worlds, renderer)
+		drainKhronosPending(worlds, renderer)
 		syncUiPointer(worlds)
 		ctx := newHudContext(worlds)
 		ctx.refreshHudLayout()
@@ -110,12 +111,14 @@ func main() {
 		handleRightClick(worlds)
 		driveTextInputs(worlds)
 		handleUiClicks(worlds)
+		ctx.refreshFps()
 		ctx.refreshModeButtons()
 		ctx.refreshMenuPopups()
 		ctx.refreshInteractiveHovers()
 		ctx.refreshEntityTree()
 		ctx.refreshInspector()
 		ctx.updateInspectorCaret()
+		ctx.refreshKhronosBrowser()
 
 		if err := render.RenderFrame(renderer, worlds.Engine); err != nil {
 			js.Global().Get("console").Call("error", "render error: "+err.Error())
