@@ -30,6 +30,7 @@ func loadGltfBytes(engine *ecs.World, renderer *render.Renderer, label string, d
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets
 	arrays := ecs.MustResource[asset.MaterialTextureArraysResource](engine).Arrays
+	resetViewerScene(engine, arrays)
 	scene, err := asset.LoadGltfReader(renderer.Device, renderer.Queue, assets, skinnedAssets, arrays, label, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -56,6 +57,7 @@ func loadKhronosPending(engine *ecs.World, renderer *render.Renderer, pending *P
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets
 	arrays := ecs.MustResource[asset.MaterialTextureArraysResource](engine).Arrays
+	resetViewerScene(engine, arrays)
 	opts := asset.LoadGltfOptions{Label: pending.DisplayName}
 	if len(pending.Resources) > 0 {
 		fsys := make(fstest.MapFS, len(pending.Resources))
@@ -75,6 +77,7 @@ func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]
 	assets := ecs.MustResource[asset.MeshAssetsResource](engine).Assets
 	skinnedAssets := ecs.MustResource[asset.SkinnedMeshAssetsResource](engine).Assets
 	arrays := ecs.MustResource[asset.MaterialTextureArraysResource](engine).Arrays
+	resetViewerScene(engine, arrays)
 	scene, err := asset.LoadGltfFile(renderer.Device, renderer.Queue, assets, skinnedAssets, arrays, path)
 	if err != nil {
 		return nil, err
@@ -82,11 +85,16 @@ func loadGltfInto(engine *ecs.World, renderer *render.Renderer, path string) ([]
 	return spawnLoadedSceneNamed(engine, renderer, scene, filepath.Base(path))
 }
 
+func resetViewerScene(engine *ecs.World, arrays *asset.MaterialTextureArrays) {
+	if !ecs.MustResource[render.Graphics](engine).ViewerMode {
+		return
+	}
+	clearLoadedScenes(engine)
+	arrays.Reset()
+}
+
 func spawnLoadedSceneNamed(engine *ecs.World, renderer *render.Renderer, scene *asset.LoadedScene, label string) ([]ecs.Entity, error) {
 	viewerMode := ecs.MustResource[render.Graphics](engine).ViewerMode
-	if viewerMode {
-		clearLoadedScenes(engine)
-	}
 	entities := asset.SpawnLoadedScene(engine, scene, renderer.Device)
 	baseName := strings.TrimSuffix(label, filepath.Ext(label))
 	nameMask := ecs.MustMaskOf[app.Name](engine)

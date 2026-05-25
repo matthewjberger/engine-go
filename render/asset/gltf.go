@@ -858,23 +858,42 @@ func uploadTextures(queue *wgpu.Queue, arrays *MaterialTextureArrays, label stri
 			continue
 		}
 		img := doc.Images[*tex.Source]
-		pixels, w, h, err := decodeGltfImage(doc, img, fsys)
-		if err != nil {
-			return nil, fmt.Errorf("gltf %q: image %d: %w", label, i, err)
-		}
-		resized := resizeRGBA(pixels, w, h, arrays.LayerSize, arrays.LayerSize)
 		name := fmt.Sprintf("%s/tex_%d", label, i)
 		if img.Name != "" {
 			name = label + "/" + img.Name
 		}
-		layer, err := arrays.Upload(queue, name, spaces[i], resized)
-		if err != nil {
-			return nil, err
-		}
+		srgb := spaces[i] == TextureSRGB
+		layer, isNew := arrays.ReserveLayer(queue, name, srgb)
 		wrapU, wrapV := samplerWrapModes(doc, tex)
 		out[i] = PackLayer(layer, wrapU, wrapV)
+		if !isNew {
+			continue
+		}
+		if arrays.loading != nil {
+			encoded, err := imageBytes(doc, img, fsys)
+			if err != nil {
+				return nil, fmt.Errorf("gltf %q: image %d: %w", label, i, err)
+			}
+			arrays.loading.enqueue(layer, srgb, append([]byte(nil), encoded...))
+			continue
+		}
+		rgba, err := decodeGltfLayer(doc, img, fsys, arrays.LayerSize)
+		if err != nil {
+			return nil, fmt.Errorf("gltf %q: image %d: %w", label, i, err)
+		}
+		if err := arrays.UploadLayer(queue, layer, srgb, rgba, arrays.LayerSize, arrays.LayerSize); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+func decodeGltfLayer(doc *gltf.Document, img *gltf.Image, fsys fs.FS, layerSize uint32) ([]byte, error) {
+	pixels, width, height, err := decodeGltfImage(doc, img, fsys)
+	if err != nil {
+		return nil, err
+	}
+	return resizeRGBA(pixels, width, height, layerSize, layerSize), nil
 }
 
 func samplerWrapModes(doc *gltf.Document, tex *gltf.Texture) (WrapMode, WrapMode) {
@@ -1766,6 +1785,12 @@ func decodeGltfImage(doc *gltf.Document, img *gltf.Image, fsys fs.FS) ([]byte, u
 	if err != nil {
 		return nil, 0, 0, err
 	}
+	return decodeImageBytes(raw)
+}
+
+// decodeImageBytes decodes encoded image bytes (PNG/JPEG) into RGBA8 pixels.
+// It performs no GPU work and is safe to run on a worker goroutine.
+func decodeImageBytes(raw []byte) ([]byte, uint32, uint32, error) {
 	decoded, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("decode: %w", err)

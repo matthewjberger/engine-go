@@ -89,6 +89,7 @@ func NewEngineWorld(renderer *render.Renderer) (*ecs.World, error) {
 	ecs.SetResource(engine, asset.SkinnedMeshAssetsResource{Assets: skinnedMeshAssets})
 	ecs.SetResource(engine, asset.TextureCacheResource{Cache: textureCache})
 	ecs.SetResource(engine, asset.MaterialTextureArraysResource{Arrays: materialArrays})
+	ecs.SetResource(engine, asset.LoadingQueueResource{Queue: asset.NewLoadingQueue(materialArrays)})
 	ecs.SetResource(engine, asset.MaterialRegistryResource{Registry: materialRegistry})
 	ecs.SetResource(engine, pass.IBLResource{IBL: ibl})
 	ecs.SetResource(engine, pass.ShadowResource{Shadow: shadow})

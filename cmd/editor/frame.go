@@ -5,10 +5,12 @@ import (
 	"github.com/matthewjberger/indigo/ecs"
 	"github.com/matthewjberger/indigo/internal/render/pass"
 	"github.com/matthewjberger/indigo/render"
+	"github.com/matthewjberger/indigo/render/asset"
 )
 
 func updateEditorFrame(worlds app.Worlds, renderer *render.Renderer, demo *app.App, delta float32) bool {
 	drainKhronosPending(worlds, renderer)
+	ecs.MustResource[asset.LoadingQueueResource](worlds.Engine).Queue.Drain(renderer.Queue)
 	syncUiPointer(worlds)
 	ctx := newHudContext(worlds)
 	ctx.refreshHudLayout()
