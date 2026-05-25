@@ -53,11 +53,6 @@ func caretVisible(uptime float32) bool {
 	return int(uptime/caretBlinkPeriodSeconds)%2 == 0
 }
 
-type namedEntity struct {
-	Entity ecs.Entity
-	Name   string
-}
-
 func formatVec3(v transform.Vec3) string {
 	return fmt.Sprintf("%.2f %.2f %.2f", v[0], v[1], v[2])
 }

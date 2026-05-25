@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/matthewjberger/indigo/app"
 	"github.com/matthewjberger/indigo/ecs"
@@ -153,21 +154,65 @@ func setModeColor(world *ecs.World, entity ecs.Entity, active bool) {
 	}
 }
 
+type hudTreeRow struct {
+	entity      ecs.Entity
+	depth       int
+	hasChildren bool
+}
+
 func (c *HudContext) refreshEntityTree() {
 	selected, hasSelected := pass.SelectedTarget(c.Engine)
 
 	nameMask := ecs.MustMaskOf[app.Name](c.Engine)
-	var entries []namedEntity
+	names := make(map[ecs.Entity]string)
+	var all []ecs.Entity
 	c.Engine.ForEach(nameMask, 0, func(entity ecs.Entity, table *ecs.Archetype, columnIndex int) {
-		names, _ := ecs.Column[app.Name](c.Engine, table)
-		entries = append(entries, namedEntity{Entity: entity, Name: names[columnIndex].Value})
-	})
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Entity.ID < entries[j].Entity.ID
+		col, _ := ecs.Column[app.Name](c.Engine, table)
+		names[entity] = col[columnIndex].Value
+		all = append(all, entity)
 	})
 
+	isRoot := func(entity ecs.Entity) bool {
+		parent, ok := ecs.Get[transform.Parent](c.Engine, entity)
+		if !ok || parent.IsRoot {
+			return true
+		}
+		_, named := names[parent.Entity]
+		return !named
+	}
+
+	var roots []ecs.Entity
+	for _, entity := range all {
+		if isRoot(entity) {
+			roots = append(roots, entity)
+		}
+	}
+	sort.Slice(roots, func(i, j int) bool { return roots[i].ID < roots[j].ID })
+
+	var rows []hudTreeRow
+	var visit func(entity ecs.Entity, depth int)
+	visit = func(entity ecs.Entity, depth int) {
+		var children []ecs.Entity
+		for _, child := range transform.QueryChildren(c.Engine, entity) {
+			if _, named := names[child]; named {
+				children = append(children, child)
+			}
+		}
+		sort.Slice(children, func(i, j int) bool { return children[i].ID < children[j].ID })
+		hasChildren := len(children) > 0
+		rows = append(rows, hudTreeRow{entity: entity, depth: depth, hasChildren: hasChildren})
+		if hasChildren && !c.Hud.TreeCollapsed[entity.ID] {
+			for _, child := range children {
+				visit(child, depth+1)
+			}
+		}
+	}
+	for _, root := range roots {
+		visit(root, 0)
+	}
+
 	const rowStride float32 = hudTreeRowHeight + 4
-	maxScroll := len(entries) - hudTreeRowCount
+	maxScroll := len(rows) - hudTreeRowCount
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -188,21 +233,36 @@ func (c *HudContext) refreshEntityTree() {
 	for i := 0; i < hudTreeRowCount; i++ {
 		row := c.Hud.TreeRows[i]
 		idx := i + offset
-		if idx < len(entries) {
-			c.Hud.TreeRowToEngine[i] = entries[idx].Entity
+		if idx < len(rows) {
+			tr := rows[idx]
+			c.Hud.TreeRowToEngine[i] = tr.entity
+			c.Hud.TreeRowHasChildren[i] = tr.hasChildren
 			c.Hud.TreeRowCount++
-			c.setText(row, entries[idx].Name)
-			if hasSelected && entries[idx].Entity == selected {
+			c.setText(row, treeRowLabel(tr.depth, tr.hasChildren, c.Hud.TreeCollapsed[tr.entity.ID], names[tr.entity]))
+			if hasSelected && tr.entity == selected {
 				c.setColor(row, [4]float32{0.22, 0.5, 0.86, 1})
 			} else {
 				c.setColor(row, [4]float32{0.10, 0.11, 0.14, 1})
 			}
 		} else {
 			c.Hud.TreeRowToEngine[i] = ecs.Entity{}
+			c.Hud.TreeRowHasChildren[i] = false
 			c.setText(row, "")
 			c.setColor(row, [4]float32{0, 0, 0, 0})
 		}
 	}
+}
+
+func treeRowLabel(depth int, hasChildren, collapsed bool, name string) string {
+	marker := "   "
+	if hasChildren {
+		if collapsed {
+			marker = " > "
+		} else {
+			marker = " v "
+		}
+	}
+	return strings.Repeat("   ", depth) + marker + name
 }
 
 func (c *HudContext) updateTreeScroll() {

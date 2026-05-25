@@ -210,7 +210,12 @@ func handleUiClicks(worlds app.Worlds) {
 			for i, row := range hud.TreeRows {
 				if evt.Entity == row {
 					target := hud.TreeRowToEngine[i]
-					applyEntitySelection(worlds.Engine, target)
+					current, hasCurrent := pass.SelectedTarget(worlds.Engine)
+					if hud.TreeRowHasChildren[i] && hasCurrent && current == target {
+						hud.TreeCollapsed[target.ID] = !hud.TreeCollapsed[target.ID]
+					} else {
+						applyEntitySelection(worlds.Engine, target)
+					}
 					hud.OpenMenu = menuClosed
 					break
 				}

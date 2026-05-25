@@ -74,8 +74,10 @@ type HudHandles struct {
 	ScaleLabel       ecs.Entity
 	MaterialLabel    ecs.Entity
 
-	TreeRowToEngine [hudTreeRowCount]ecs.Entity
-	TreeRowCount    int
+	TreeRowToEngine    [hudTreeRowCount]ecs.Entity
+	TreeRowHasChildren [hudTreeRowCount]bool
+	TreeCollapsed      map[uint32]bool
+	TreeRowCount       int
 
 	RequestExit     bool
 	NameFocusedPrev bool
@@ -94,6 +96,7 @@ type HudHandles struct {
 func buildHud(world *ecs.World) HudHandles {
 	b := ui.NewBuilder(world)
 	var h HudHandles
+	h.TreeCollapsed = make(map[uint32]bool)
 
 	h.TopBar = b.Node(ui.Node{
 		X: 0, Y: 0,
