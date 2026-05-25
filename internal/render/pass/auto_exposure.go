@@ -15,11 +15,15 @@ import (
 //go:embed auto_exposure.wgsl
 var autoExposureShader string
 
+// autoExposureBuffer keeps the CPU-written fields (AdaptationRate, DeltaTime)
+// first so they can be uploaded with a single offset-0 WriteBuffer. The browser
+// WebGPU binding rejects writes at a non-zero buffer offset, and the remaining
+// fields are maintained by the compute shader, so the CPU must not touch them.
 type autoExposureBuffer struct {
-	TargetLogLuminance  float32
-	CurrentLogLuminance float32
 	AdaptationRate      float32
 	DeltaTime           float32
+	TargetLogLuminance  float32
+	CurrentLogLuminance float32
 	Primed              uint32
 	Pad0                uint32
 	Pad1                uint32
@@ -148,8 +152,10 @@ func autoExposurePrepare(state *autoExposurePassState, context *render.PassConte
 		DeltaTime:      delta,
 	}
 
-	context.Queue.WriteBuffer(state.buffer, uint64(unsafe.Offsetof(header.AdaptationRate)), bytesOf(&header.AdaptationRate))
-	context.Queue.WriteBuffer(state.buffer, uint64(unsafe.Offsetof(header.DeltaTime)), bytesOf(&header.DeltaTime))
+	// AdaptationRate and DeltaTime are the first two fields, so this single
+	// offset-0 write updates exactly the CPU-controlled params while leaving the
+	// shader-maintained luminance fields intact.
+	context.Queue.WriteBuffer(state.buffer, 0, bytesOfN(&header, 8))
 
 	sceneView, err := context.TextureView("scene_color")
 	if err != nil {

@@ -116,7 +116,7 @@ func (r *MaterialRegistry) EnsureCapacity(required uint32) (bool, error) {
 }
 
 func (r *MaterialRegistry) Write(queue *wgpu.Queue, id uint32, gpu MaterialGPU) {
-	queue.WriteBuffer(r.buffer, uint64(id)*MaterialGPUSize, unsafe.Slice((*byte)(unsafe.Pointer(&gpu)), MaterialGPUSize))
+	r.writeAt(queue, uint64(id)*MaterialGPUSize, unsafe.Slice((*byte)(unsafe.Pointer(&gpu)), MaterialGPUSize))
 }
 
 func (r *MaterialRegistry) ReleaseResources() {

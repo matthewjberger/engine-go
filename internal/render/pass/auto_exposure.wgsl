@@ -1,8 +1,8 @@
 struct Output {
-    target_log_luminance:  f32,
-    current_log_luminance: f32,
     adaptation_rate:       f32,
     delta_time:            f32,
+    target_log_luminance:  f32,
+    current_log_luminance: f32,
     primed:                u32,
     _pad0:                 u32,
     _pad1:                 u32,
