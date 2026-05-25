@@ -210,7 +210,7 @@ func newSsaoState(device *wgpu.Device, aspect func() float32) (*ssaoPassState, e
 		return nil, fmt.Errorf("ssao: kernel buffer: %w", err)
 	}
 	kernelBytes := sliceBytes(kernel)
-	device.GetQueue().WriteBuffer(kernelBuffer, 0, kernelBytes)
+	writeBufferStandalone(device, device.GetQueue(), kernelBuffer, 0, kernelBytes)
 
 	noise := buildSsaoNoise()
 	noiseTex, err := device.CreateTexture(&wgpu.TextureDescriptor{
