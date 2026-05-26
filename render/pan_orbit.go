@@ -89,7 +89,7 @@ func UpdatePanOrbitCamera(world *ecs.World) {
 func mouseCapturedByOverlay(world *ecs.World) bool {
 	if ecs.HasResource[*Gizmos](world) {
 		g := *ecs.MustResource[*Gizmos](world)
-		if g != nil && (g.Dragging || g.HoverAxis >= 0) {
+		if g != nil && (g.Dragging || g.DraggingPlane || g.HoverAxis >= 0 || g.HoverPlane >= 0) {
 			return true
 		}
 	}
