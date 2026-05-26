@@ -191,6 +191,9 @@ func handleUiClicks(worlds app.Worlds) {
 			hud.OpenMenu = toggleMenu(hud.OpenMenu, menuViewOpen)
 		case hud.AssetsButton:
 			hud.OpenMenu = toggleMenu(hud.OpenMenu, menuAssetsOpen)
+		case hud.RandomModelButton:
+			(*ecs.MustResource[*PolyhavenBrowser](worlds.Engine)).FetchRandom()
+			hud.OpenMenu = menuClosed
 		case hud.ViewerButton:
 			settings := ecs.MustResource[render.Graphics](worlds.Engine)
 			settings.ViewerMode = !settings.ViewerMode
@@ -266,14 +269,9 @@ func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool 
 		return true
 	}
 	if idx := matchItem(hud.AssetsMenu, entity); idx >= 0 {
-		switch idx {
-		case 0:
-			hud.KhronosOpen = !hud.KhronosOpen
-			if hud.KhronosOpen {
-				(*ecs.MustResource[*KhronosBrowser](worlds.Engine)).EnsureLoaded()
-			}
-		case 1:
-			(*ecs.MustResource[*PolyhavenBrowser](worlds.Engine)).FetchRandom()
+		hud.KhronosOpen = !hud.KhronosOpen
+		if hud.KhronosOpen {
+			(*ecs.MustResource[*KhronosBrowser](worlds.Engine)).EnsureLoaded()
 		}
 		return true
 	}

@@ -34,18 +34,19 @@ type menuPopup struct {
 }
 
 type HudHandles struct {
-	TopBar          ecs.Entity
-	FpsLabel        ecs.Entity
-	FileButton      ecs.Entity
-	EditButton      ecs.Entity
-	ViewButton      ecs.Entity
-	AssetsButton    ecs.Entity
-	ViewerButton    ecs.Entity
-	ViewerCheck     ecs.Entity
-	ViewerLabel     ecs.Entity
-	TranslateButton ecs.Entity
-	RotateButton    ecs.Entity
-	ScaleButton     ecs.Entity
+	TopBar            ecs.Entity
+	FpsLabel          ecs.Entity
+	FileButton        ecs.Entity
+	EditButton        ecs.Entity
+	ViewButton        ecs.Entity
+	AssetsButton      ecs.Entity
+	RandomModelButton ecs.Entity
+	ViewerButton      ecs.Entity
+	ViewerCheck       ecs.Entity
+	ViewerLabel       ecs.Entity
+	TranslateButton   ecs.Entity
+	RotateButton      ecs.Entity
+	ScaleButton       ecs.Entity
 
 	FileMenu   menuPopup
 	EditMenu   menuPopup
@@ -127,6 +128,7 @@ func buildHud(world *ecs.World) HudHandles {
 	h.EditButton = buildMenuButton(b, "EDIT")
 	h.ViewButton = buildMenuButton(b, "VIEW")
 	h.AssetsButton = buildMenuButton(b, "ASSETS")
+	h.RandomModelButton = buildBarButton(b, "RANDOM MODEL", 124)
 	h.ViewerButton, h.ViewerCheck = buildCheckbox(b)
 	h.ViewerLabel = b.Node(ui.Node{Width: 70, Height: 24}).
 		Color(ui.Color{RGBA: [4]float32{0, 0, 0, 0}}).
@@ -227,7 +229,7 @@ func buildHud(world *ecs.World) HudHandles {
 	h.ViewMenu = buildMenuPopup(b, buttonOffset+2*buttonStride, hudTopBarHeight,
 		[]string{"RESET CAMERA", "TOGGLE GRID", "TOGGLE SKY", "TOGGLE BOUNDS", "TOGGLE NORMALS", "TOGGLE SKELETONS", "TOGGLE HIERARCHY", "TOGGLE INSPECTOR"})
 	h.AssetsMenu = buildMenuPopup(b, buttonOffset+3*buttonStride, hudTopBarHeight,
-		[]string{"KHRONOS SAMPLES", "RANDOM MODEL"})
+		[]string{"KHRONOS SAMPLES"})
 	h.ContextMenu = buildMenuPopup(b, 0, 0,
 		[]string{"DELETE"})
 
@@ -298,7 +300,11 @@ func buildMenuPopup(b *ui.Builder, anchorX, anchorY float32, items []string) men
 }
 
 func buildMenuButton(b *ui.Builder, text string) ecs.Entity {
-	return b.Node(ui.Node{Width: 64, Height: 24}).
+	return buildBarButton(b, text, 64)
+}
+
+func buildBarButton(b *ui.Builder, text string, width float32) ecs.Entity {
+	return b.Node(ui.Node{Width: width, Height: 24}).
 		Color(ui.Color{RGBA: [4]float32{0.14, 0.16, 0.20, 1}}).
 		Interactive().
 		Text(ui.Text{
