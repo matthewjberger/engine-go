@@ -244,6 +244,14 @@ func toggleMenu(current, target int) int {
 	return target
 }
 
+func togglePanel(world *ecs.World, panel ecs.Entity) {
+	node, ok := ecs.Get[ui.Node](world, panel)
+	if !ok {
+		return
+	}
+	ui.SetVisible(world, panel, node.Hidden)
+}
+
 func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool {
 	if idx := matchItem(hud.FileMenu, entity); idx >= 0 {
 		if idx == 3 {
@@ -258,11 +266,14 @@ func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool 
 		return true
 	}
 	if idx := matchItem(hud.AssetsMenu, entity); idx >= 0 {
-		if idx == 0 {
+		switch idx {
+		case 0:
 			hud.KhronosOpen = !hud.KhronosOpen
 			if hud.KhronosOpen {
 				(*ecs.MustResource[*KhronosBrowser](worlds.Engine)).EnsureLoaded()
 			}
+		case 1:
+			(*ecs.MustResource[*KhronosBrowser](worlds.Engine)).FetchRandom()
 		}
 		return true
 	}
@@ -290,6 +301,10 @@ func handleMenuItem(worlds app.Worlds, hud *HudHandles, entity ecs.Entity) bool 
 		case 5:
 			settings := ecs.MustResource[render.Graphics](worlds.Engine)
 			settings.ShowSkeletons = !settings.ShowSkeletons
+		case 6:
+			togglePanel(worlds.UI, hud.LeftPanel)
+		case 7:
+			togglePanel(worlds.UI, hud.RightPanel)
 		}
 		return true
 	}

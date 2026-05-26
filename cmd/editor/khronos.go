@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -48,12 +49,13 @@ type PendingKhronos struct {
 
 // KhronosBrowser fetches the Khronos glTF-Sample-Assets index and individual
 type KhronosBrowser struct {
-	mu       sync.Mutex
-	status   khronosIndexStatus
-	entries  []KhronosEntry
-	indexErr string
-	pending  *PendingKhronos
-	loading  string
+	mu         sync.Mutex
+	status     khronosIndexStatus
+	entries    []KhronosEntry
+	indexErr   string
+	pending    *PendingKhronos
+	loading    string
+	wantRandom bool
 }
 
 func NewKhronosBrowser() *KhronosBrowser {
@@ -108,6 +110,37 @@ func (b *KhronosBrowser) TakePending() *PendingKhronos {
 	return pending
 }
 
+// FetchRandom downloads a random asset, kicking off the index fetch first if it
+// has not loaded yet and deferring the pick until the index arrives.
+func (b *KhronosBrowser) FetchRandom() {
+	b.mu.Lock()
+	switch b.status {
+	case khronosIdle:
+		b.status = khronosLoading
+		b.wantRandom = true
+		b.mu.Unlock()
+		go b.fetchIndex()
+		return
+	case khronosLoading:
+		b.wantRandom = true
+		b.mu.Unlock()
+		return
+	case khronosFailed:
+		b.mu.Unlock()
+		return
+	}
+	entries := b.entries
+	b.mu.Unlock()
+	b.fetchRandomFrom(entries)
+}
+
+func (b *KhronosBrowser) fetchRandomFrom(entries []KhronosEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	b.FetchEntry(entries[rand.IntN(len(entries))])
+}
+
 // FetchEntry begins downloading the given entry.
 func (b *KhronosBrowser) FetchEntry(entry KhronosEntry) {
 	if entry.GlbURL != "" {
@@ -157,7 +190,12 @@ func (b *KhronosBrowser) fetchIndex() {
 	b.mu.Lock()
 	b.entries = entries
 	b.status = khronosLoaded
+	wantRandom := b.wantRandom
+	b.wantRandom = false
 	b.mu.Unlock()
+	if wantRandom {
+		b.fetchRandomFrom(entries)
+	}
 }
 
 func (b *KhronosBrowser) failIndex(message string) {

@@ -156,6 +156,7 @@ func buildHud(world *ecs.World) HudHandles {
 		Anchor:  ui.AnchorTopLeft,
 		Layout:  ui.LayoutColumn,
 		Padding: 10, Spacing: 4,
+		Hidden: true,
 	}).Color(ui.Color{RGBA: [4]float32{0.06, 0.07, 0.09, 1}}).Entity()
 	b.Push(h.LeftPanel)
 	h.TreeTitle = b.Node(ui.Node{Width: hudLeftPanelWidth - 20, Height: 22}).Text(ui.Text{
@@ -184,6 +185,7 @@ func buildHud(world *ecs.World) HudHandles {
 		Anchor:  ui.AnchorTopRight,
 		Layout:  ui.LayoutColumn,
 		Padding: 12, Spacing: 6,
+		Hidden: true,
 	}).Color(ui.Color{RGBA: [4]float32{0.06, 0.07, 0.09, 1}}).Entity()
 	b.Push(h.RightPanel)
 	h.InspectorTitle = b.Node(ui.Node{Width: hudRightPanelWidth - 24, Height: 22}).Text(ui.Text{
@@ -223,9 +225,9 @@ func buildHud(world *ecs.World) HudHandles {
 	h.EditMenu = buildMenuPopup(b, buttonOffset+1*buttonStride, hudTopBarHeight,
 		[]string{"UNDO", "REDO", "DESELECT"})
 	h.ViewMenu = buildMenuPopup(b, buttonOffset+2*buttonStride, hudTopBarHeight,
-		[]string{"RESET CAMERA", "TOGGLE GRID", "TOGGLE SKY", "TOGGLE BOUNDS", "TOGGLE NORMALS", "TOGGLE SKELETONS"})
+		[]string{"RESET CAMERA", "TOGGLE GRID", "TOGGLE SKY", "TOGGLE BOUNDS", "TOGGLE NORMALS", "TOGGLE SKELETONS", "TOGGLE HIERARCHY", "TOGGLE INSPECTOR"})
 	h.AssetsMenu = buildMenuPopup(b, buttonOffset+3*buttonStride, hudTopBarHeight,
-		[]string{"KHRONOS SAMPLES"})
+		[]string{"KHRONOS SAMPLES", "RANDOM MODEL"})
 	h.ContextMenu = buildMenuPopup(b, 0, 0,
 		[]string{"DELETE"})
 
