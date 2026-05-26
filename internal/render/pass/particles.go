@@ -542,7 +542,7 @@ func particleRenderExecute(system *particleSystem, context *render.PassContext) 
 	pass.SetPipeline(system.renderPipeline)
 	pass.SetBindGroup(0, system.renderGroup0, nil)
 	pass.SetBindGroup(1, system.renderGroup1, nil)
-	pass.Draw(6, maxParticles, 0, 0)
+	particleDraw(pass, system)
 	pass.End()
 	pass.Release()
 	return nil
